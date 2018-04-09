@@ -1,1 +1,5 @@
 **/builds
+**/lastStable
+**/lastSuccessful
+**/nextBuildNumber
+**/scm-polling.log
