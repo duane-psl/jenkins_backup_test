@@ -1,7 +1,0 @@
-Started on Apr 6, 2018 1:26:00 PM
-Using strategy: Default
-[poll] Last Built Revision: Revision 81dc8e8fcf923baa5e5208f9bc4228930c7c3d56 (4.06.1)
- > git ls-remote -h git://github.com/ocaml/ocaml.git # timeout=10
-Found 90 remote heads on git://github.com/ocaml/ocaml.git
-Done. Took 0.61 sec
-No changes
