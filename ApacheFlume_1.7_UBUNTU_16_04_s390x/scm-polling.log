@@ -1,0 +1,8 @@
+Started on Apr 2, 2018 1:55:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 511d868555dd4d16e6ce4fedc72c2d1454546707 (origin/flume-1.7)
+ > git ls-remote -h https://github.com/apache/flume.git # timeout=10
+Found 19 remote heads on https://github.com/apache/flume.git
+[poll] Latest remote head revision on refs/heads/flume-1.7 is: 511d868555dd4d16e6ce4fedc72c2d1454546707 - already built by 72
+Done. Took 0.94 sec
+No changes

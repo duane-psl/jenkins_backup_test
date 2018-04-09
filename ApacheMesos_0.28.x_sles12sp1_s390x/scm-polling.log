@@ -1,0 +1,8 @@
+Started on Mar 25, 2018 1:32:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 6921af97ff5173144025a142c65b9b834f05396d (origin/0.28.x)
+ > git ls-remote -h https://github.com/linux-on-ibm-z/mesos # timeout=10
+Found 7 remote heads on https://github.com/linux-on-ibm-z/mesos
+[poll] Latest remote head revision on refs/heads/0.28.x is: 6921af97ff5173144025a142c65b9b834f05396d - already built by 24
+Done. Took 0.46 sec
+No changes

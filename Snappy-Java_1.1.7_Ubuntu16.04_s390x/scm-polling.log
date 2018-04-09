@@ -1,0 +1,7 @@
+Started on Sep 24, 2017 1:24:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 190dab7308d5fc37b5589a6e7b5428d3d73519d7 (1.1.2.6)
+ > git ls-remote -h https://github.com/xerial/snappy-java.git # timeout=10
+Found 20 remote heads on https://github.com/xerial/snappy-java.git
+Done. Took 0.73 sec
+No changes

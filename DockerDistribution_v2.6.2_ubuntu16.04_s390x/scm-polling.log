@@ -1,0 +1,7 @@
+Started on Aug 3, 2017 1:00:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision a25b9ef0c9fe242ac04bb20d3a028442b7d266b6 (v2.6.1)
+ > git ls-remote -h https://github.com/docker/distribution.git # timeout=10
+Found 16 remote heads on https://github.com/docker/distribution.git
+Done. Took 0.73 sec
+No changes

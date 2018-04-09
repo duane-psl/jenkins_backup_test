@@ -1,0 +1,9 @@
+Started on Jul 17, 2016 1:02:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 7607db428b4d4f4c9d97d1f6282adc6e07608515 (refs/remotes/origin/master)
+ > git --version # timeout=10
+ > git ls-remote -h https://github.com/jupyter/notebook.git # timeout=10
+Found 3 remote heads on https://github.com/jupyter/notebook.git
+[poll] Latest remote head revision on refs/heads/master is: 7607db428b4d4f4c9d97d1f6282adc6e07608515 - already built by 35
+Done. Took 0.58 sec
+No changes

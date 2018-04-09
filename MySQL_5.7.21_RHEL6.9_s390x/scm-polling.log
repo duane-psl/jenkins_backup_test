@@ -1,0 +1,9 @@
+Started on Aug 12, 2016 1:07:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 1020e95bb203bd500ece736163e44a2034beba4d (origin/5.7)
+ > git --version # timeout=10
+ > git ls-remote -h https://github.com/mysql/mysql-server.git # timeout=10
+Found 7 remote heads on https://github.com/mysql/mysql-server.git
+[poll] Latest remote head revision on refs/heads/5.7 is: 1020e95bb203bd500ece736163e44a2034beba4d - already built by 69
+Done. Took 0.8 sec
+No changes

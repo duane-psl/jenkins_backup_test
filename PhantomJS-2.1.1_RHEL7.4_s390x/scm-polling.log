@@ -1,0 +1,7 @@
+Started on Mar 20, 2018 1:43:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision d9cda3dcd26b0e463533c5cc96e39c0f39fc32c1 (2.1.1)
+ > git ls-remote -h git://github.com/ariya/phantomjs.git # timeout=10
+Found 16 remote heads on git://github.com/ariya/phantomjs.git
+Done. Took 0.33 sec
+No changes

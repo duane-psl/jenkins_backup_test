@@ -1,0 +1,9 @@
+Started on Jul 11, 2016 8:17:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 253ef5b331ca9bfbd00f2d1621462a8477e61021 (refs/remotes/origin/master)
+ > git --version # timeout=10
+ > git ls-remote -h https://github.com/jythontools/jython.git # timeout=10
+Found 1 remote heads on https://github.com/jythontools/jython.git
+[poll] Latest remote head revision on refs/heads/master is: 253ef5b331ca9bfbd00f2d1621462a8477e61021 - already built by 73
+Done. Took 0.57 sec
+No changes

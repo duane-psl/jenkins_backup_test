@@ -1,0 +1,8 @@
+Started on Apr 6, 2018 1:59:00 AM
+Using strategy: Default
+[poll] Last Built Revision: Revision e7bb80a5162a1dea8321eae9cea0ec4ab180ac3f (origin/v3.0-s390)
+ > git ls-remote -h https://github.com/linux-on-ibm-z/mongo # timeout=10
+Found 8 remote heads on https://github.com/linux-on-ibm-z/mongo
+[poll] Latest remote head revision on refs/heads/v3.0-s390 is: e7bb80a5162a1dea8321eae9cea0ec4ab180ac3f - already built by 26
+Done. Took 17 sec
+No changes

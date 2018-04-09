@@ -1,0 +1,9 @@
+Started on Jul 15, 2016 1:54:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision c3090360061b5da2ead424446243ce115c7b3f0b (origin/5.6-POWER_FIXES)
+ > git --version # timeout=10
+ > git ls-remote -h https://github.com/linux-on-ibm-power/mysql-server/ # timeout=10
+Found 41 remote heads on https://github.com/linux-on-ibm-power/mysql-server/
+[poll] Latest remote head revision on refs/heads/5.6-POWER_FIXES is: c3090360061b5da2ead424446243ce115c7b3f0b - already built by 2
+Done. Took 0.56 sec
+No changes

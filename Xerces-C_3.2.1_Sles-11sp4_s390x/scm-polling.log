@@ -1,0 +1,7 @@
+Started on Sep 24, 2017 1:05:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 9ed56912fc79310c84043d030a6872e8f0e07c25 (Xerces-C_3_1_4)
+ > git ls-remote -h https://github.com/apache/xerces-c.git # timeout=10
+Found 11 remote heads on https://github.com/apache/xerces-c.git
+Done. Took 0.62 sec
+No changes

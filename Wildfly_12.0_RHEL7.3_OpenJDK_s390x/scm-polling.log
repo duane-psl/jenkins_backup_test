@@ -1,0 +1,7 @@
+Started on Aug 20, 2017 1:14:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision c3332cec0c9bc5dc57899c2ae7ba26dd0c627686 (10.1.0.Final)
+ > git ls-remote -h https://github.com/wildfly/wildfly.git # timeout=10
+Found 12 remote heads on https://github.com/wildfly/wildfly.git
+Done. Took 1.1 sec
+No changes

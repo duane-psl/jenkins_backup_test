@@ -1,0 +1,7 @@
+Started on Apr 2, 2018 1:39:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision d5b6d1b634f69709d2b3caa17cba52696ed2033d (cassandra-2.1.13)
+ > git ls-remote -h https://github.com/apache/cassandra.git # timeout=10
+Found 9 remote heads on https://github.com/apache/cassandra.git
+Done. Took 1 sec
+No changes

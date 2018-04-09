@@ -1,0 +1,9 @@
+Started on Jan 5, 2016 11:13:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision a057639b486f7b48dd5bcfc34391c6f7cb5a7b42 (refs/remotes/origin/master)
+ > git --version # timeout=10
+ > git ls-remote -h https://github.com/jruby/jruby.git # timeout=10
+Found 62 remote heads on https://github.com/jruby/jruby.git
+[poll] Latest remote head revision on refs/heads/master is: a39aad7e492db839d89c7e812a8e1f5aafc0d869
+Done. Took 0.92 sec
+Changes found

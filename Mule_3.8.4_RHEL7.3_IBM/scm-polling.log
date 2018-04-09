@@ -1,0 +1,8 @@
+Started on Apr 17, 2017 1:16:00 PM
+Using strategy: Default
+[poll] Last Built Revision: Revision 50db633c01b7fa31e4dc934714567beeb462a2ad (origin/mule-3.8.2-s390x)
+ > git ls-remote -h https://github.com/linux-on-ibm-z/mule.git # timeout=10
+Found 134 remote heads on https://github.com/linux-on-ibm-z/mule.git
+[poll] Latest remote head revision on refs/heads/mule-3.8.2-s390x is: 50db633c01b7fa31e4dc934714567beeb462a2ad - already built by 11
+Done. Took 0.53 sec
+No changes
