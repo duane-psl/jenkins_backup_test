@@ -1,0 +1,241 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles11-sp4-8192</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 8 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;drupal&quot;
+published_version=&quot;8.4.5&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+#-----------------------------------------------------------------------------------------
+export WORK_DIR=`pwd`
+export DEBIAN_FRONTEND=noninteractive
+export PATH=/usr/sbin/:$PATH
+sudo zypper update -y
+cat /etc/os*
+
+sudo zypper install -y gcc-c++ tar wget curl vim gcc make net-snmp net-snmp-devel git automake apache2 apache2-devel \
+libcurl-devel libxml2 libxml2-devel freetype2 freetype2-devel libtool pcre pcre-devel git-core autoconf libexpat-devel libjpeg-devel \
+libpng-devel libmcrypt-devel curl-devel cron openssh libmcrypt-devel libicu-devel pkg-config libxslt-devel gawk wget-openssl1 curl-openssl1
+
+#Install Openssl
+cd $WORK_DIR
+git clone git://github.com/openssl/openssl.git &amp;&amp; cd openssl
+git checkout OpenSSL_1_0_2l	 
+./config --prefix=/usr --openssldir=/usr/local/openssl shared
+make &amp;&amp; sudo make install
+
+#Install Curl
+cd $WORK_DIR
+git clone git://github.com/curl/curl.git &amp;&amp; cd curl
+git checkout curl-7_52_1
+./buildconf
+./configure --prefix=/usr/local --with-ssl --disable-shared
+make &amp;&amp; sudo make install
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib64
+export PATH=/usr/local/bin:$PATH
+echo insecure &gt;&gt; $HOME/.curlrc
+wget --no-check-certificate https://raw.githubusercontent.com/curl/curl/curl-7_53_0/lib/mk-ca-bundle.pl
+perl mk-ca-bundle.pl -k
+export SSL_CERT_FILE=`pwd`/ca-bundle.crt
+rm  $HOME/.curlrc
+
+
+
+sudo zypper install -y git gcc5 gcc5-c++ make cmake bison ncurses-devel util-linux tar zip wget glibc-devel-32bit zlib-devel cpp gawk
+sudo ln -fs /usr/bin/gcc-5 /usr/bin/gcc
+sudo ln -fs /usr/bin/g++-5 /usr/bin/g++
+sudo ln -fs /usr/bin/gcc /usr/bin/cc
+
+cd $WORK_DIR
+wget http://www.cmake.org/files/v3.3/cmake-3.3.0.tar.gz
+tar xzf cmake-3.3.0.tar.gz
+cd cmake-3.3.0
+./bootstrap --prefix=/usr
+gmake
+sudo gmake install
+which cmake
+$(which cmake) --version
+
+cd $WORK_DIR
+git clone git://github.com/mysql/mysql-server.git
+cd mysql-server
+git checkout tags/mysql-5.7.21
+wget https://superb-sea2.dl.sourceforge.net/project/boost/boost/1.59.0/boost_1_59_0.tar.gz
+tar xzf boost_1_59_0.tar.gz
+cmake -DCMAKE_C_COMPILER=/usr/bin/cc -DCMAKE_CXX_COMPILER=/usr/bin/g++ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=.
+gmake
+sudo gmake install
+
+# Post installation setup
+if !(getent passwd mysql); then
+   sudo /usr/sbin/useradd mysql
+    sudo /usr/sbin/groupadd mysql
+fi
+cd /usr/local/mysql
+sudo chown -R mysql .
+sudo chgrp -R mysql .
+###Install PHP
+cd $WORK_DIR
+sudo rm -rf php-7.0.23
+wget http://www.php.net/distributions/php-7.0.23.tar.gz  
+tar xvzf php-7.0.23.tar.gz 	
+cd php-7.0.23
+./configure --with-apxs2=/usr/sbin/apxs2 --without-pcre-jit --with-openssl --enable-soap --with-libxml-dir=/usr/lib64 --with-mysqli --with-gd --with-jpeg-dir=/usr/include/jpeglib.h --with-png-dir --with-pdo_mysql --with-curl --enable-mbstring --enable-intl --enable-zip --with-xsl
+
+make   
+sudo make install
+sudo cp ./php.ini-development /usr/local/php/php.ini 
+export PATH=$PATH:/usr/local/php/bin:/usr/local/bin
+php -v
+
+###Install Composer
+cd $WORK_DIR
+
+curl -sS https://getcomposer.org/installer | /usr/local/bin/php
+sudo mv composer.phar /usr/local/bin/composer
+chmod +x /usr/local/bin/composer
+export PATH=$PATH:/usr/local/bin/
+composer -V
+
+#Edit apache config files
+line1=&quot;Options None&quot;
+line2=&quot;Options Indexes FollowSymLinks&quot;
+line3=&quot;AllowOverride None&quot;
+line4=&quot;AllowOverride All&quot;
+
+###Modify the configuration files
+sudo chmod 766 /etc/apache2/httpd.conf
+sudo cp /etc/apache2/httpd.conf /etc/apache2/httpd.conf.old
+
+sudo echo -e &quot;ServerName localhost&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;AddType application/x-httpd-php .php&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;AddHandler cgi-script .cgi&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;DirectoryIndex index.php index.html index.var&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;LoadModule php7_module /usr/lib64/apache2/libphp7.so&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;LoadModule rewrite_module /usr/lib64/apache2/mod_rewrite.so&quot; &gt;&gt;  /etc/apache2/httpd.conf
+
+sudo sed -i &quot;s/$line1/$line2/g&quot; /etc/apache2/default-server.conf
+sudo sed -i &quot;s/$line3/$line4/g&quot; /etc/apache2/default-server.conf
+sudo sed -i &apos;192d&apos;  /etc/apache2/httpd.conf 
+
+###Create Drupal database
+cd /usr/local/mysql/bin
+sudo ./mysqld  --initialize-insecure --user=mysql &amp;
+sleep 30
+sudo ./mysqld_safe --user=mysql &amp;
+sleep 30s
+sudo ./mysql -e &quot;create database drupal&quot; 
+sudo ./mysql -e &quot;create user &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos;&quot; 
+sudo ./mysql -e &quot;grant all privileges on drupal.* to &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos; with GRANT OPTION&quot; 
+
+
+##download Drupal source 
+cd $WORK_DIR
+curl -o drupal-8.4.5.tar.gz https://ftp.drupal.org/files/projects/drupal-8.4.5.tar.gz
+tar -xvf drupal-8.4.5.tar.gz
+sudo mkdir -p /srv/www/htdocs/Drupal 
+cd drupal-8.4.5
+sudo mv * .htaccess .csslintrc .editorconfig .eslintignore .eslintrc.json .gitattributes /srv/www/htdocs/Drupal/
+cd /srv/www/htdocs/Drupal
+composer install 
+
+
+#Set permissions
+sudo mkdir sites/default/files 
+sudo chmod a+w sites/default/files 
+sudo chmod a+w sites/default 
+sudo cp sites/default/default.settings.php sites/default/settings.php 
+sudo chmod a+w sites/default/settings.php 
+ls /home/test/
+sudo cp /home/test/work/Drupal_8.4.3/sles_settings.php sites/default/settings.php
+
+sudo httpd2 -k start
+sleep 10
+cd /usr/local/mysql/bin
+mysql -u drupal -pdrupal drupal &lt; /home/test/work/Drupal_8.4.3/drupal.sql
+sleep 60s
+wget -q  http://127.0.0.1:80/Drupal -O - | grep Welcome
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

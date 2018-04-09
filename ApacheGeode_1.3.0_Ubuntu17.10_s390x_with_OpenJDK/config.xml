@@ -1,0 +1,243 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_ubuntu17.10_8192</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 23 * * 6</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 23 * * 6</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+export WS=`pwd`
+
+###Install dependencies
+
+sudo apt-get update &amp;&amp; sudo apt-get install -y git wget
+
+
+
+###Build protobuf-3.0.0
+      
+      ###Install dependencies
+    
+        sudo apt-get update -y 
+        sudo apt-get install -y tar wget autoconf libtool automake g++ make git bzip2 curl unzip zlib1g-dev patch
+        
+        ## get code 
+        
+        cd $WS
+        sudo rm -vrf protobuf
+        git clone https://github.com/google/protobuf.git
+        cd protobuf
+        git checkout v3.0.0
+   
+sudo rm -rf autogen.patch add_func.patch
+ 
+echo -e &apos;diff --git a/autogen.sh b/autogen.sh
+index 5b4c29f8..c01a7ad7 100755
+--- a/autogen.sh
++++ b/autogen.sh
+@@ -30,11 +30,16 @@ fi
+ # Check that gmock is present.  Usually it is already there since the
+ # directory is set up as an SVN external.
+ if test ! -e gmock; then
+-  echo &quot;Google Mock not present.  Fetching gmock-1.7.0 from the web...&quot;
+-  curl $curlopts -O https://googlemock.googlecode.com/files/gmock-1.7.0.zip
+-  unzip -q gmock-1.7.0.zip
+-  rm gmock-1.7.0.zip
+-  mv gmock-1.7.0 gmock
++ echo &quot;Google Mock not present.  Fetching gmock-1.7.0 from the web...&quot;
++ curl $curlopts -L -O https://github.com/google/googlemock/archive/release-1.7.0.zip
++ unzip -q release-1.7.0.zip
++ rm release-1.7.0.zip
++ mv googlemock-release-1.7.0 gmock
++
++ curl $curlopts -L -O https://github.com/google/googletest/archive/release-1.7.0.zip
++ unzip -q release-1.7.0.zip
++ rm release-1.7.0.zip
++ mv googletest-release-1.7.0 gmock/gtest
+ fi
+
+ set -ex&apos; &gt; autogen.patch
+   
+   
+   
+  patch $WS/protobuf/autogen.sh &lt; autogen.patch
+
+
+git diff
+   
+         ###Generate and then run the configuration
+        ./autogen.sh &amp;&amp; ./configure 
+        
+  
+  
+echo -e &apos;diff --git a/src/google/protobuf/stubs/atomicops_internals_generic_gcc.h b/src/google/protobuf/stubs/atomicops_internals_generic_gcc.h
+index a0116a60..5317590e 100644
+--- a/src/google/protobuf/stubs/atomicops_internals_generic_gcc.h
++++ b/src/google/protobuf/stubs/atomicops_internals_generic_gcc.h
+@@ -127,7 +127,23 @@ inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr,
+                               __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+   return old_value;
+ }
++inline Atomic64 NoBarrier_AtomicIncrement(volatile Atomic64* ptr,
++                                                    Atomic64 increment) {
++       return __atomic_add_fetch(ptr, increment, __ATOMIC_RELAXED);
++}
++
++inline void NoBarrier_Store(volatile Atomic64* ptr, Atomic64 value) {
++       __atomic_store_n(ptr, value, __ATOMIC_RELAXED);
++}
+
++inline Atomic64 NoBarrier_AtomicExchange(volatile Atomic64* ptr,
++                                                    Atomic64 new_value) {
++       return __atomic_exchange_n(ptr, new_value, __ATOMIC_RELAXED);
++}
++
++inline Atomic64 NoBarrier_Load(volatile const Atomic64* ptr) {
++       return __atomic_load_n(ptr, __ATOMIC_RELAXED);
++}
+ #endif // defined(__LP64__)
+
+ }  // namespace internal&apos; &gt; add_func.patch
+   
+         
+  patch $WS/protobuf/src/google/protobuf/stubs/atomicops_internals_generic_gcc.h &lt; add_func.patch
+        
+ 
+ git diff
+ 
+
+        ###Build and test
+        make &amp;&amp; make check 
+        
+        ###Install Protobuf and verify the installation
+        sudo make install
+        export LD_LIBRARY_PATH=/usr/local/lib
+        export PATH=$PATH:/usr/local/bin
+        protoc --version
+
+###Set env variables
+sudo apt-get install -y openjdk-8-jdk
+
+#Set java home and path otherwise it uses openjdk9
+
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-s390x
+export PATH=$JAVA_HOME/bin:$PATH
+
+export LANG=&quot;en_US.UTF-8&quot;
+export JAVA_TOOL_OPTIONS=&quot;-Dfile.encoding=UTF8&quot;
+export _JAVA_OPTIONS=-Xmx2048m
+export JVM_ARGS=&quot;-Xms2048m -Xmx2048m&quot;
+
+java -version
+
+
+
+###Get geode source
+cd $WS
+rm -rf incubator-geode
+rm -rf /home/test/.gradle
+git clone https://github.com/apache/incubator-geode.git
+cd incubator-geode/
+git checkout rel/v1.3.0
+
+
+mkdir -p /home/test/.gradle/caches/modules-2/files-2.1/com.google.protobuf/protoc/3.0.0
+cp /usr/local/bin/protoc /home/test/.gradle/caches/modules-2/files-2.1/com.google.protobuf/protoc/3.0.0/protoc-3.0.0-linux-s390x_64.exe
+
+sudo -E sed -i &apos;45d&apos; $WS/incubator-geode/geode-protobuf/build.gradle 
+sudo -E sed -i &quot;44iorg.gradle.jvmargs = -Xss1g&quot; $WS/incubator-geode/gradle.properties
+cd $WS/incubator-geode
+git diff 
+
+###Build
+./gradlew build installDist -x test | tee build.log
+
+###Test
+
+./gradlew test 2&gt;&amp;1 | tee $WS/testlog
+
+ 
+echo &quot;org.apache.geode.internal.process.NativeProcessUtilsTest &gt; isProcessAlive_livePid_returnsTrue FAILED
+org.apache.geode.internal.process.NativeProcessUtilsTest &gt; isProcessAlive_deadPid_returnsFalse FAILED
+org.apache.geode.internal.size.SizeClassOnceObjectSizerJUnitTest &gt; test FAILED
+org.apache.geode.internal.size.WellKnownClassSizerJUnitTest &gt; testStrings FAILED
+:geode-core:test FAILED
+BUILD FAILED&quot; &gt;$WS/exp_failures
+
+
+cat $WS/testlog | grep FAILED &gt;$WS/s390x_failures
+cat $WS/s390x_failures
+
+###Fail the job if any extra failure occurred apart from expected failures
+if diff -u --ignore-all-space &lt;(sort $WS/s390x_failures) &lt;(sort $WS/exp_failures) | grep -q -i &quot;\-org&quot;; then
+	echo &quot;Unexpected failures found!&quot;
+    exit 1
+fi
+
+
+export PATH=$PATH:$WS/incubator-geode/geode-assembly/build/install/apache-geode/bin
+gfsh </command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@srajmane</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

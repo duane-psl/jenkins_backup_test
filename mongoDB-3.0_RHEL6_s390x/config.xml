@@ -1,0 +1,138 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>Date:&#xd;
+Description:&#xd;
+</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>ketan_mongo_3.0_rhel6.9</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+    <com.cloudbees.jenkins.GitHubPushTrigger plugin="github@1.25.0">
+      <spec></spec>
+    </com.cloudbees.jenkins.GitHubPushTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 5</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#------building v8--------------
+sudo yum install -y git subversion make gcc-c++ tar wget bzip2 zlib zlib-devel
+cd /home/test/
+mkdir source_root
+cd source_root
+git clone https://github.com/ibmruntimes/v8z
+cd v8z
+git checkout 3.14-s390
+make dependencies
+make s390x -j4
+make s390x -j4 library=shared
+sudo cp -vR include/* /usr/include/
+#sudo chmod -f 644 /usr/include/v8*h /usr/include/libplatform/libplatform.h
+
+sudo cp -v out/s390x.release/lib.target/lib*.so /usr/local/lib64/
+#sudo chmod -f 755 /usr/local/lib64/libv8.so /usr/local/lib64/libicu*.so
+
+sudo cp -v out/s390x.release/obj.target/tools/gyp/lib*.a /usr/local/lib64/
+if [ -d out/s390x.release/obj.target/third_party/icu ] ; then \
+    sudo cp -v out/s390x.release/obj.target/third_party/icu/lib*.a /usr/local/lib64/ ; fi
+#sudo chmod -f 644 /usr/local/lib64/libv8*.a /usr/local/lib64/libpreparser_lib.a /usr/local/lib64/libicu*.a
+
+sudo ldconfig -v
+#--------------------
+
+cd /home/test/source_root/
+wget http://sourceforge.net/projects/scons/files/scons/2.3.1/scons-2.3.1-1.noarch.rpm
+sudo rpm -i scons-2.3.1-1.noarch.rpm
+
+#--build gcc
+
+wget ftp://gcc.gnu.org/pub/gcc/releases/gcc-5.1.0/gcc-5.1.0.tar.bz2
+tar -xvjf gcc-5.1.0.tar.bz2
+cd gcc-5.1.0
+./contrib/download_prerequisites
+mkdir build
+cd build
+../configure --prefix=/opt/gcc-5.1.0 \
+    --enable-languages=&quot;c,c++,go&quot; --enable-shared --with-system-zlib \
+    --enable-threads=posix --enable-__cxa_atexit --enable-checking \
+    --enable-gnu-indirect-function --disable-multilib --disable-bootstrap
+
+make
+sudo make install
+#------------------
+cd /home/test/source_root/
+git clone https://github.com/linux-on-ibm-z/mongo mongo
+cd mongo
+git checkout v3.0-s390
+cp /home/test/source_root/v8z/include/*.h /home/test/source_root/mongo/src/
+
+
+scons --cc=/opt/gcc-5.1.0/bin/gcc --cxx=/opt/gcc-5.1.0/bin/g++ \
+      --static-libstdc++ --disable-warnings-as-errors --opt \
+      --use-system-v8 --allocator=system --variant-dir=z all
+
+
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

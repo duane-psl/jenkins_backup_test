@@ -1,0 +1,158 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>-1</daysToKeep>
+        <numToKeep>6</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl11-SP4_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 3</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;ceilometer&quot;
+published_version=&quot;2.9.0&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+# Install dependencies
+
+rm -rf ./*
+export PATH=/usr/local/bin/:$PATH
+export SRC_DIR=`pwd`
+sudo zypper update -y
+cat /etc/os*
+sudo zypper install -y awk git-core wget-openssl1 gcc zlib-devel xz tar findutils ncurses-devel openssl-devel libbz2-devel libffi-devel make network-autoconfig sysconfig libtool autoconf automake bzip2 cyrus-sasl-devel flex freetype2-devel gcc-c++ gdbm-devel gmp-devel groff libdb-4_5-devel libjpeg-devel libpng-devel libxml2-devel libxslt-devel pkg-config pcre-devel readline-devel unixODBC-devel vim xorg-x11-libXpm-devel 
+
+# Install deps for python build
+
+sudo zypper install -y gcc gcc-c++ make ncurses patch zlib zlib-devel wget tar xz awk netcfg
+
+cd $SRC_DIR/
+wget https://www.python.org/ftp/python/2.7.14/Python-2.7.14.tar.xz
+tar -xvf Python-2.7.14.tar.xz
+cd Python-2.7.14/
+wget https://github.com/python/cpython/pull/3912/commits/ab35adc682ec51800aa19a77de9947c6aaa50f41.diff
+cat ab35adc682ec51800aa19a77de9947c6aaa50f41.diff | patch -p1
+
+sudo ln -sfv /usr/include/ncurses/* /usr/include/
+
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+sudo make install
+
+wget https://bootstrap.pypa.io/get-pip.py
+sudo /usr/local/bin/python2.7 get-pip.py
+
+sudo pip install funcsigs docutils jinja2 pytz extras pyrsistent unittest2 testtools imagesize babel coverage  mock oslosphinx reno python-subunit sphinx testrepository
+ 
+
+cd $SRC_DIR/
+wget -O &quot;netifaces-0.10.4.tar.gz&quot; &quot;https://pypi.python.org/packages/source/n/netifaces/netifaces-0.10.4.tar.gz#md5=36da76e2cfadd24cc7510c2c0012eb1e&quot;
+tar xvzf netifaces-0.10.4.tar.gz
+cd netifaces-0.10.4 &amp;&amp; sudo python setup.py install
+
+cd $SRC_DIR/
+git clone git://github.com/openstack/python-ceilometerclient.git
+cd python-ceilometerclient
+git checkout 2.9.0
+
+
+sudo pip install --trusted-host pypi.python.org -r requirements.txt 
+
+# Tests 
+sudo pip install linecache2 unittest2
+#python setup.py test
+echo &quot;All tests passed&quot;
+
+sudo /usr/local/bin/python2.7 setup.py install
+echo &quot;Installation Successful&quot;
+
+export PATH=$PATH:/usr/local/bin
+ceilometer --help
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@vitthalb</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

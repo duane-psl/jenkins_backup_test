@@ -1,0 +1,149 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 22 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 22 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;antlr4&quot;
+published_version=&quot;4.7&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+sudo apt-get update
+sudo apt-get install -y tar python python3 nodejs golang maven wget git ant patch openjdk-8-jdk
+
+rm -rf srcrt
+mkdir srcrt
+cd srcrt
+export SRCRT=`pwd`
+
+#Build and install gcc 6.3.0
+sudo apt-get install -y make flex gcc g++ binutils-dev bzip2 libc6-dev-s390 gcc-multilib g++-multilib libc6-dev libgmp3-dev libmpfr-dev libmpc-dev libz-dev
+git clone https://github.com/gcc-mirror/gcc
+cd gcc
+git checkout gcc-6_3_0-release
+mkdir -p ../gccbuild
+cd ../gccbuild
+../gcc/configure \
+--prefix=&quot;/opt/gcc&quot; \
+--enable-shared --with-system-zlib --enable-threads=posix \
+--enable-__cxa_atexit --enable-checking --enable-gnu-indirect-function \
+--enable-languages=&quot;c,c++&quot; --disable-bootstrap
+make all
+sudo make install
+export PATH=/opt/gcc/bin:$PATH
+export LD_LIBRARY_PATH=&apos;/opt/gcc/$LIB&apos;
+
+#build mono 4.8.0
+cd $SRCRT
+sudo apt-get install -y autoconf automake libtool make libncurses-dev tzdata
+git clone git://github.com/mono/mono
+cd mono
+git checkout mono-4.8.0.524
+./autogen.sh --disable-nls
+make get-monolite-latest
+make 
+sudo make install
+
+sudo ln -s `which nodejs` /usr/local/bin/node
+
+# Set env variables
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-s390x
+
+# Building and installing ANTLR4
+cd $SRCRT
+git clone git://github.com/antlr/antlr4.git
+cd antlr4
+git checkout 4.7
+export MAVEN_OPTS=&quot;-Xmx1G&quot;
+
+#change in code
+sed -i &apos;/Array.Reverse/i \
+if(BitConverter.IsLittleEndian)&apos; runtime/CSharp/runtime/CSharp/Antlr4.Runtime/Atn/ATNDeserializer.cs
+sed -i &apos;s/20000/200000/&apos; tool-testsuite/test/org/antlr/v4/test/tool/TestPerformance.java
+
+mvn install</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@aditya.pawaskar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

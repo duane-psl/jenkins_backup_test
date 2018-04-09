@@ -1,0 +1,285 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel7.4_root</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 9 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 9 * * 3</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Set the below parameters manually
+package_name=&quot;scylladb&quot;
+published_version=&quot;2.0.1&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+export source_root=`pwd`
+
+yum install -y ant java-1.8.0-openjdk-devel python-devel gnutls-devel libaio-devel systemtap-sdt-devel \
+            lksctp-tools-devel xfsprogs-devel snappy-devel libyaml-devel maven cmake openssl-devel  \
+            perl-devel c-ares libevent-devel libyaml-devel gmp-devel mpfr-devel libmpcdec xz-devel  \
+            automake gcc git make texinfo wget unzip gcc-c++ libtool tar bzip2 xz gzip
+
+
+
+#Install Python 3
+cd $source_root
+mkdir python3
+cd python3
+wget https://www.python.org/ftp/python/3.6.2/Python-3.6.2.tgz
+tar -xf Python-3.6.2.tgz
+cd Python-3.6.2
+./configure
+make -j 4
+
+ln -sf `pwd`/python /usr/bin/python3
+
+#Install pyparsing
+cd $source_root
+mkdir pyparsing
+cd pyparsing
+wget https://sourceforge.net/projects/pyparsing/files/pyparsing/pyparsing-2.2.0/pyparsing-2.2.0.tar.gz
+tar -xf pyparsing-2.2.0.tar.gz
+cd pyparsing-2.2.0
+python3 setup.py install
+
+#Install Ninja
+cd $source_root
+mkdir ninja
+cd ninja
+wget https://github.com/ninja-build/ninja/archive/v1.7.2.zip
+unzip v1.7.2.zip
+cd ninja-1.7.2
+./configure.py --bootstrap
+cp ninja /usr/local/bin
+
+#Install Ragel
+cd $source_root
+mkdir ragel
+cd ragel
+wget http://www.colm.net/files/ragel/ragel-6.10.tar.gz
+tar -xzf ragel-6.10.tar.gz
+cd ragel-6.10
+./configure
+make -j 4
+make install
+
+#Install Crypto++
+cd $source_root
+mkdir cryptopp
+cd cryptopp
+wget https://www.cryptopp.com/cryptopp565.zip
+unzip cryptopp565.zip
+CXXFLAGS=&quot;-std=c++11 -g -O2&quot; make
+make install
+
+#Install LZ4
+cd $source_root
+mkdir lz4
+cd lz4
+wget https://github.com/lz4/lz4/archive/v1.7.5.tar.gz
+tar -xzf v1.7.5.tar.gz
+cd lz4-1.7.5
+CC=gcc CFLAGS=&quot;-g -O3&quot; make install
+
+#Install Antlr 3
+cd $source_root
+mkdir antlr3
+cd antlr3
+wget https://github.com/antlr/antlr3/archive/3.5.2.tar.gz
+tar -xzf 3.5.2.tar.gz
+cd antlr3-3.5.2
+cp runtime/Cpp/include/antlr3* /usr/local/include/
+cd antlr-complete
+MAVEN_OPTS=&quot;-Xmx4G&quot; mvn
+echo &apos;java -cp &apos;`pwd`&apos;/target/antlr-complete-3.5.2.jar org.antlr.Tool $@&apos; &gt; /usr/local/bin/antlr3
+chmod +x /usr/local/bin/antlr3
+
+#Install libunwind
+cd $source_root
+git clone https://github.com/linux-on-ibm-z/libunwind
+cd libunwind
+git checkout s390x-rebased
+./autogen.sh
+./configure
+make install
+
+#Install GCC 7
+cd $source_root
+mkdir gcc
+cd gcc
+wget https://ftpmirror.gnu.org/gcc/gcc-7.2.0/gcc-7.2.0.tar.xz
+tar -xf gcc-7.2.0.tar.xz
+cd gcc-7.2.0
+./contrib/download_prerequisites
+mkdir objdir
+cd objdir
+../configure --prefix=/opt/gcc-7.2.0 --enable-languages=c,c++ --with-arch=z196 --with-long-double-128 \
+             --build=s390x-linux-gnu --host=s390x-linux-gnu --target=s390x-linux-gnu                  \
+             --enable-threads=posix --with-system-zlib --disable-multilib
+make -j 4
+make install
+
+export PATH=/opt/gcc-7.2.0/bin:&quot;$PATH&quot;
+export LD_LIBRARY_PATH=/opt/gcc-7.2.0/lib64:&quot;$LD_LIBRARY_PATH&quot;
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig/
+
+#Install Boost
+cd $source_root
+mkdir boost
+cd boost
+wget https://dl.bintray.com/boostorg/release/1.64.0/source/boost_1_64_0.tar.gz
+tar -xf boost_1_64_0.tar.gz
+cd boost_1_64_0
+sed -i &apos;s/array\.hpp/array_wrapper.hpp/g&apos; boost/numeric/ublas/matrix.hpp
+sed -i &apos;s/array\.hpp/array_wrapper.hpp/g&apos; boost/numeric/ublas/storage.hpp
+sed -i &apos;s/BOOST_LOCKFREE_CACHELINE_BYTES 64/BOOST_LOCKFREE_CACHELINE_BYTES 256/g&apos; boost/lockfree/detail/prefix.hpp
+./bootstrap.sh
+./b2 toolset=gcc variant=release link=static runtime-link=static threading=multi cxxflags=&quot;-g -std=c++11&quot; --prefix=/usr/local/ install | tee boost.log
+
+#Install Thrift 0.9.3
+cd $source_root
+mkdir thrift
+cd thrift
+wget http://archive.apache.org/dist/thrift/0.9.3/thrift-0.9.3.tar.gz
+tar -xzf thrift-0.9.3.tar.gz
+cd thrift-0.9.3
+./configure --without-lua --without-go
+make -j 4
+make install
+
+#Install yaml-cpp
+cd $source_root
+mkdir yaml-cpp
+cd yaml-cpp
+wget https://github.com/jbeder/yaml-cpp/archive/yaml-cpp-0.5.3.tar.gz
+tar -xzf yaml-cpp-0.5.3.tar.gz
+mkdir yaml-cpp-yaml-cpp-0.5.3/build
+cd yaml-cpp-yaml-cpp-0.5.3/build
+cmake .. -DCMAKE_CXX_COMPILER=/opt/gcc-7.2.0/bin/g++
+make
+make install
+
+#Install jsoncpp
+cd $source_root
+mkdir jsoncpp
+cd jsoncpp
+wget https://github.com/open-source-parsers/jsoncpp/archive/1.7.7.tar.gz
+tar -xzf 1.7.7.tar.gz
+cd jsoncpp-1.7.7
+mkdir -p build/release
+cd build/release
+cmake ../.. -DCMAKE_CXX_COMPILER=/opt/gcc-7.2.0/bin/g++
+make -j 4
+make install
+
+#Install Protobuf
+cd $source_root
+mkdir protobuf
+cd protobuf
+wget https://github.com/google/protobuf/archive/v3.3.0.tar.gz
+tar -xzf v3.3.0.tar.gz
+cd protobuf-3.3.0
+./autogen.sh
+./configure
+make -j 4
+make check | tee test.log
+make install
+
+
+#Build ScyllaDB
+cd $source_root
+git clone https://github.com/linux-on-ibm-z/scylla
+cd scylla
+git checkout 2.0.1-s390x
+git submodule update --init --recursive
+cd $source_root/scylla
+export LD_LIBRARY_PATH=/opt/gcc-7.2.0/lib64:/usr/local/lib:&quot;$LD_LIBRARY_PATH&quot;
+./configure.py --mode=release --target=zEC12  --cflags=&apos;-fsigned-char&apos; --debuginfo 1 --static-boost --static-thrift
+ninja -j 4
+
+#Test ScyllaDB
+./test.py --mode=release | tee test.log
+
+#Run ScyllaDB
+$source_root/scylla/build/release/scylla --version</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@aditya.pawaskar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

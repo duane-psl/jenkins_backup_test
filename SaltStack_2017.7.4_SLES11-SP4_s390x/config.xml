@@ -1,0 +1,182 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl11-SP4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 17 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>homedir=`pwd`
+# Install build dependencies
+sudo zypper update -y
+sudo zypper install -y ncurses patch zlib zlib-devel git awk tar bzip2 unzip openssl-devel make automake autoconf libtool net-tools wget  libxslt-devel gcc libffi-devel gcc-c++ libbz2-devel xz
+
+
+
+#Build openssl
+cd $homedir
+sudo rm -rf openssl
+git clone git://github.com/openssl/openssl.git
+cd openssl
+git checkout OpenSSL_1_0_2l	 
+./config --prefix=/usr --openssldir=/usr/local/openssl shared
+make
+sudo make install
+openssl version
+
+
+#Build curl
+cd $homedir
+sudo rm -rf curl
+git clone git://github.com/curl/curl.git
+cd curl
+git checkout curl-7_52_1
+./buildconf 
+./configure --prefix=/usr/local --with-ssl --disable-shared
+make &amp;&amp; sudo make install
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib64
+export PATH=/usr/local/bin:$PATH
+
+#Generate ca-bundle.crt for curl
+echo insecure &gt;&gt; $HOME/.curlrc
+wget https://raw.githubusercontent.com/curl/curl/curl-7_53_0/lib/mk-ca-bundle.pl
+perl mk-ca-bundle.pl -k
+export SSL_CERT_FILE=`pwd`/ca-bundle.crt
+rm  $HOME/.curlrc
+
+
+#Install  python
+cd $homedir
+sudo zypper install -y gcc gcc-c++ make ncurses patch wget tar
+sudo zypper install -y gcc gcc-c++ make ncurses patch wget tar bzip2 zlib-devel xz readline-devel sqlite-devel tk-devel ncurses-devel gdbm-devel openssl-devel libdb-4_5-devel gdb awk glibc-debuginfo netcfg libbz2-devel
+rm -rf Python-2.7.14 Python-2.7.14.tar.xz Python
+wget https://www.python.org/ftp/python/2.7.14/Python-2.7.14.tar.xz
+sudo tar -xvf Python-2.7.14.tar.xz
+cd Python-2.7.14
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+sudo make install
+
+#Set Python 2.7 in the path
+export PATH=/usr/local/bin:$PATH
+sudo /usr/sbin/update-alternatives --install /usr/bin/python python /usr/local/bin/python 10
+sudo /usr/sbin/update-alternatives --display python
+python -V
+
+
+#Install pip
+curl -o /tmp/get-pip.py https://bootstrap.pypa.io/get-pip.py
+sudo /usr/local/bin/python2.7 /tmp/get-pip.py
+
+cd $homedir
+sudo pip install &apos;cryptography==1.4&apos;
+sudo pip install paramiko httplib2 passlib six patch &apos;django&lt;2.0&apos; call coverage==3.7.1 coveralls funcsigs pyzmq PyYAML pycrypto msgpack-python jinja2 psutil futures tornado
+
+# Download source code
+git clone git://github.com/saltstack/salt
+cd salt        
+git checkout v2017.7.4
+        
+# Install saltstack and check version
+cd ..
+sudo pip install -e ./salt  
+salt --version
+salt --version | grep 2017.7.4
+
+# Configure Salt master and minion
+sudo rm -rf etc/salt/
+mkdir -p etc/salt/
+cp ./salt/conf/master ./salt/conf/minion etc/salt/
+cd etc/salt/ 
+
+# Edit config file master as shown below
+sed -i &apos;s/#user: root/user: root/g&apos; master
+sed -i &apos;s,#root_dir: /,&apos;&quot;root_dir: $homedir&quot;&apos;,&apos; master
+
+# Edit config file minion as shown below
+sed -i &apos;s/#master: salt/master: localhost/g&apos; minion
+sed -i &apos;s/#user: root/user: root/g&apos; minion
+sed -i &apos;s,#root_dir: /,&apos;&quot;root_dir: $homedir&quot;&apos;,&apos; minion
+
+cd $homedir
+sudo salt-master -c ./etc/salt -d 
+sleep 30
+sudo salt-minion -c ./etc/salt -d 
+sleep 60
+sudo salt-key -c ./etc/salt -L 
+sleep 30
+sudo salt-key -c ./etc/salt -A  -y
+sudo salt -c ./etc/salt &apos;*&apos; test.ping || true 
+
+# Check master, minion process
+ps -ef | grep salt
+
+
+# Unit and integration tests (optional)
+#cd $homedir/salt
+#sudo pip install git+https://github.com/saltstack/salt-testing.git#egg=SaltTesting
+#sudo pip install -r requirements/dev_python27.txt 
+#sudo ./setup.py test
+
+
+# **Note:** Test failures seen in the following modules can be ignore as these are not related to IBM z Systems:_ 
+#           _Module Tests, State Tests, Shell Tests, NetAPI Tests, Salt Unit Test_</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room></room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

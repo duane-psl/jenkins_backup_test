@@ -1,0 +1,336 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-sp3_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 22 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 22 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+
+export WORK_DIR=`pwd`
+
+echo $WORK_DIR
+cat /etc/issue
+sudo zypper update -y
+ sudo zypper install -y curl java-1_8_0-openjdk-devel java-1_8_0-openjdk tar wget git-core awk wget tar curl dejavu-fonts
+
+export JAVA_HOME=/usr/lib64/jvm/java
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+
+wget http://www.eu.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz
+tar -xvzf apache-maven-3.3.9-bin.tar.gz
+
+export PATH=$PATH:$WORK_DIR/apache-maven-3.3.9/bin
+mvn --version
+
+
+    wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/nodejs/6.12.0.0/linux/s390x/ibm-6.12.0.0-node-v6.12.0-linux-s390x.bin
+    chmod +x ibm-6.12.0.0-node-v6.12.0-linux-s390x.bin
+    echo -e &quot;LICENSE_ACCEPTED=TRUE\nUSER_INSTALL_DIR=$WORK_DIR/ibm/node\n-fileOverwrite_$WORK_DIR/ibm/node/_node_installation/uninstall.lax=Yes&quot; &gt; installer.properties
+    cat installer.properties
+    ./ibm-6.12.0.0-node-v6.12.0-linux-s390x.bin -f installer.properties -i silent
+    
+    export PATH=$PATH:$WORK_DIR/ibm/node/bin
+    node -v
+
+
+cd $WORK_DIR
+sudo rm -rf jenkins
+git clone git://github.com/jenkinsci/jenkins.git
+cd $WORK_DIR/jenkins
+git checkout jenkins-2.89.2
+
+
+
+cd $WORK_DIR/jenkins/war
+sudo rm -rf $WORK_DIR/ibm/node/lib/node_modules/gulp-cli/bin/gulp.js
+npm install -g gulp gulp-cli 
+npm install --save-dev gulp
+npm install handlebars jenkins-js-modules window-handle bootstrap-detached jenkins-handlebars-rt jenkins-js-test jquery-detached
+npm install jenkins-js-builder
+gulp bundle
+
+cd $WORK_DIR/jenkins
+cat -n war/pom.xml
+cd $WORK_DIR/jenkins/war
+
+sed -i &apos;564i &lt;!--&apos; pom.xml
+sed -i &apos;589d&apos; pom.xml
+sed -i &apos;612d&apos; pom.xml
+sed -i &apos;622,624d&apos; pom.xml
+sed -i &apos;685i --&gt;&apos;  pom.xml
+
+cd $WORK_DIR/jenkins/
+
+export JAVA_HOME=/usr/lib64/jvm/java
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+export PATH=$PATH:$WORK_DIR/apache-maven-3.3.9/bin
+mvn --version
+export PATH=$PATH:$WORK_DIR/ibm/node/bin
+node -v
+
+
+export _JAVA_OPTIONS=&quot;-Xmx4g&quot;
+
+mvn clean install -fn -pl war -am -DskipTests -Dfindbugs.timeout=9000000| tee skip_test.log
+###Replace JNA.jar file
+
+cd $WORK_DIR/jenkins/war/target
+mkdir -p temp
+sudo cp jenkins.war temp/
+cd temp 
+
+sudo mkdir -p WEB-INF/lib
+
+sudo chown -R $(whoami) ./WEB-INF/
+wget  http://repo1.maven.org/maven2/net/java/dev/jna/jna/4.5.0/jna-4.5.0.jar -O WEB-INF/lib/jna-4.5.0.jar
+jar -uf jenkins.war WEB-INF/lib/jna-4.5.0.jar
+sudo cp jenkins.war $WORK_DIR/jenkins/war/target
+cd $WORK_DIR/jenkins/war/target
+#sudo rm -rf temp
+
+ls
+cd $WORK_DIR/jenkins/
+
+
+#mvn clean install -fn -pl war -am -Dmaven.test.failure.ignore=true  -Dfindbugs.timeout=90000000 | tee with_test.log
+
+
+#  echo &apos;
+#   &apos; &gt; $WORK_DIR/jenkins/test_failures.log   
+#  sed -n -e &apos;/Tests in error/,$p&apos; $WORK_DIR/jenkins/with_test.log |  sed -e &apos;/Tests run/,$d&apos; &gt; $WORK_DIR/jenkins/s390x_failures.txt
+#  
+#  cat $WORK_DIR/jenkins/test_failures.log
+#  cat $WORK_DIR/jenkins/s390x_failures.txt
+   
+#diff -w $WORK_DIR/jenkins/s390x_failures.txt $WORK_DIR/jenkins/test_failures.log
+
+###Verification Jenkins war file deployment
+cd $WORK_DIR/
+sudo zypper install -y wget tar git make gcc gcc-c++ patch
+git clone https://github.com/openssl/openssl.git &amp;&amp; cd openssl &amp;&amp; git checkout OpenSSL_1_0_2h &amp;&amp; \
+./config --prefix=/usr --openssldir=/usr/local/openssl shared &amp;&amp; \
+make &amp;&amp; \
+sudo make install
+
+#Ant installation
+cd ..  
+workspace_dir=`pwd`
+wget http://archive.apache.org/dist/ant/binaries/apache-ant-1.9.6-bin.tar.gz  
+tar -zxvf apache-ant-1.9.6-bin.tar.gz
+export ANT_HOME=$workspace_dir/apache-ant-1.9.6
+export PATH=$PATH:$ANT_HOME/bin
+ant -version
+
+#Tomcat Installation
+cd $WORK_DIR
+git clone https://github.com/apache/tomcat85.git
+cd tomcat85
+git checkout TOMCAT_8_5_3
+cp build.properties.default build.properties
+sudo chmod -R 777 /usr/share/java/
+ant
+
+export JENKINS_HOME=$WORK_DIR
+cp $WORK_DIR/jenkins/war/target/jenkins.war $WORK_DIR/tomcat85/output/build/webapps/jenkins.war
+export CATALINA_HOME=$WORK_DIR/tomcat85/output/build
+export PATH=$PATH:$CATALINA_HOME/bin
+sed  -i &apos;$ i \
+&lt;role rolename=&quot;manager-gui&quot;/&gt; \
+&lt;role rolename=&quot;manager-script&quot;/&gt; \
+&lt;user username=&quot;tomcat&quot; password=&quot;tomcat&quot; roles=&quot;manager-gui,manager-script&quot;/&gt; &apos; $CATALINA_HOME/conf/tomcat-users.xml
+
+cd $CATALINA_HOME/conf
+mkdir -p Catalina/localhost/
+echo -e &apos;&lt;Context privileged=&quot;true&quot; antiResourceLocking=&quot;false&quot;\ndocBase=&quot;${catalina.home}/webapps/manager&quot;&gt; 
+&lt;Valve className=&quot;org.apache.catalina.valves.RemoteAddrValve&quot;\nallow=&quot;^.*$&quot;/&gt;\n&lt;/Context&gt;&apos; &gt; $CATALINA_HOME/conf/Catalina/localhost/manager.xml
+cd $CATALINA_HOME/bin
+sh catalina.sh start 
+
+sleep 3m
+
+#check if tomcat is running
+wget localhost:8080
+cat index.html
+
+#check if jenkins is deployed -&gt;login page
+sleep 3m
+
+curl http://localhost:8080/jenkins/login?from=%2Fjenkins%2F
+
+###checking of the dashboard --&gt;&gt;&gt; do not delete &lt;&lt;&lt;-----
+sh catalina.sh stop
+sleep 3m
+
+### copy a config file to /home/test
+cd /home/test
+cat &lt;&lt;&apos;EOF&apos; &gt; config.xml
+&lt;?xml version=&apos;1.0&apos; encoding=&apos;UTF-8&apos;?&gt;
+&lt;hudson&gt;
+  &lt;disabledAdministrativeMonitors/&gt;
+  &lt;version&gt;1.0&lt;/version&gt;
+  &lt;numExecutors&gt;2&lt;/numExecutors&gt;
+  &lt;mode&gt;NORMAL&lt;/mode&gt;
+  &lt;useSecurity&gt;false&lt;/useSecurity&gt;
+&lt;!--  &lt;authorizationStrategy class=&quot;hudson.security.FullControlOnceLoggedInAuthorizationStrategy&quot;&gt;
+    &lt;denyAnonymousReadAccess&gt;true&lt;/denyAnonymousReadAccess&gt;
+  &lt;/authorizationStrategy&gt;
+  &lt;securityRealm class=&quot;hudson.security.HudsonPrivateSecurityRealm&quot;&gt;
+    &lt;disableSignup&gt;true&lt;/disableSignup&gt;
+    &lt;enableCaptcha&gt;false&lt;/enableCaptcha&gt;
+  &lt;/securityRealm&gt; --&gt;
+  &lt;disableRememberMe&gt;false&lt;/disableRememberMe&gt;
+  &lt;projectNamingStrategy class=&quot;jenkins.model.ProjectNamingStrategy$DefaultProjectNamingStrategy&quot;/&gt;
+  &lt;workspaceDir&gt;${JENKINS_HOME}/workspace/${ITEM_FULLNAME}&lt;/workspaceDir&gt;
+  &lt;buildsDir&gt;${ITEM_ROOTDIR}/builds&lt;/buildsDir&gt;
+  &lt;jdks/&gt;
+  &lt;viewsTabBar class=&quot;hudson.views.DefaultViewsTabBar&quot;/&gt;
+  &lt;myViewsTabBar class=&quot;hudson.views.DefaultMyViewsTabBar&quot;/&gt;
+  &lt;clouds/&gt;
+  &lt;scmCheckoutRetryCount&gt;0&lt;/scmCheckoutRetryCount&gt;
+  &lt;views&gt;
+    &lt;hudson.model.AllView&gt;
+      &lt;owner class=&quot;hudson&quot; reference=&quot;../../..&quot;/&gt;
+      &lt;name&gt;All&lt;/name&gt;
+      &lt;filterExecutors&gt;false&lt;/filterExecutors&gt;
+      &lt;filterQueue&gt;false&lt;/filterQueue&gt;
+      &lt;properties class=&quot;hudson.model.View$PropertyList&quot;/&gt;
+    &lt;/hudson.model.AllView&gt;
+  &lt;/views&gt;
+  &lt;primaryView&gt;All&lt;/primaryView&gt;
+  &lt;slaveAgentPort&gt;-1&lt;/slaveAgentPort&gt;
+  &lt;label&gt;&lt;/label&gt;
+  &lt;crumbIssuer class=&quot;hudson.security.csrf.DefaultCrumbIssuer&quot;&gt;
+    &lt;excludeClientIPFromCrumb&gt;false&lt;/excludeClientIPFromCrumb&gt;
+  &lt;/crumbIssuer&gt;
+  &lt;nodeProperties/&gt;
+  &lt;globalNodeProperties/&gt;
+&lt;/hudson&gt;
+EOF
+
+ps -aef
+
+
+
+
+cd $WORK_DIR/tomcat85/output/build/webapps
+export JENKINS_HOME=/home/test
+nohup java -Djenkins.install.runSetupWizard=false -jar jenkins.war &amp;
+sleep 4m
+cd $JENKINS_HOME/war/WEB-INF/lib/
+ls
+
+jar -tvf jna-4.2.1.jar
+jar -tvf jna-4.*.jar | grep 390   || true
+cd $WORK_DIR/tomcat85/output/build/webapps
+
+
+rm -f index.html
+
+wget localhost:8080
+if grep -q Dashboard &quot;index.html&quot;; then
+   whoami
+   ps -aef
+   (pgrep -d&quot; &quot; -f &quot;tomcat&quot; | sudo xargs kill) || true
+   (pgrep -d&quot; &quot; -f &quot;jenkins.war&quot; | sudo xargs kill) || true
+   sleep 1m
+   ps -aef
+   exit 0
+else
+   exit 1
+fi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @cgopi</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

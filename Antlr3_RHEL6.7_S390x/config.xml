@@ -1,0 +1,142 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 9 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 9 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Set the below parameters manually
+package_name=&quot;antlr3&quot;
+published_version=&quot;3.5.2&quot;
+
+available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+PRETTY_NAME=&quot;Red Hat Enterprise Linux Server release 6.7 (Santiago)&quot;
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo for $PRETTY_NAME.&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+# Install dependencies  
+sudo yum install -y git java-1.7.1-ibm-devel tar wget  
+
+# Set Workdir
+export WORK_DIR=`pwd`
+  
+# Set Environment Variables
+export PATH=$WORK_DIR/apache-ant-1.9.4/bin:$PATH
+export JAVA_HOME=/usr/lib/jvm/java
+export PATH=$PATH:$JAVA_HOME/bin
+export M2_HOME=$WORK_DIR/apache-maven-3.3.9
+export PATH=$JAVA_HOME/bin:$PATH:$M2_HOME/bin
+java -version
+
+# Change working directory
+cd $WORK_DIR
+wget https://archive.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz
+tar -zxvf apache-maven-3.3.9-bin.tar.gz
+
+cd $WORK_DIR
+git clone git://github.com/antlr/antlr3
+cd antlr3
+git checkout 3.5.2
+
+# Build antlr
+cd $WORK_DIR/antlr3
+mvn -Dgpg.skip=true -Duser.name=&quot;test&quot; -Dbootclasspath.compile=$JAVA_HOME/jre/lib/s390x/default/jclSC170/vm.jar:$JAVA_HOME/jre/lib/rt.jar -Dbootclasspath.testCompile=$JAVA_HOME/jre/lib/s390x/default/jclSC170/vm.jar:$JAVA_HOME/jre/lib/rt.jar -Djava6.home=$JAVA_HOME/jre install | tee antlr_build_log
+
+# Set classpath
+export CLASSPATH=$WORK_DIR/antlr3/antlr-complete/target/antlr-complete-3.5.2.jar:$CLASSPATH
+
+java org.antlr.Tool
+
+# The following part is added under migration activity
+
+echo -e &apos;grammar Hello;\ntypeident  : hello ID ;\nID : (a..z)+ ;&apos; &gt; Hello.g3
+sed -i &quot;s/hello/\&apos;hello\&apos;/&quot; Hello.g3
+sed -i &quot;s/a..z/\&apos;a\&apos;..\&apos;z\&apos;/&quot; Hello.g3
+
+cat Hello.g3
+
+rm -fr Hello.tokens  HelloLexer.java  HelloParser.java
+
+alias antlr3=&apos;java org.antlr.Tool&apos;
+
+#antlr3 Hello.g3
+java org.antlr.Tool Hello.g3
+
+if [ -f &quot;./Hello.tokens&quot; -a -f &quot;./HelloLexer.java&quot; -a -f &quot;./HelloParser.java&quot; ]
+then
+	exit 0
+else
+	exit 1
+fi
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@aditya.pawaskar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

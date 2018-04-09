@@ -1,0 +1,157 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel6.9-8192</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 4 * * 0</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 4 * * 0</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+#Set the below parameters manually
+package_name=&quot;geode&quot;
+published_version=&quot;1.2.0&quot;
+
+source /home/test/.bashrc
+
+available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+PRETTY_NAME=&quot;Red Hat Enterprise Linux Server release 6.9 (Santiago)&quot;
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo for $PRETTY_NAME.&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+rm -rf ./*
+ulimit -u 10240
+export WS=`pwd`
+
+#Install dependencies
+sudo yum install -y git which 
+
+#Set env variables
+wget https://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/java/8.0.4.10/linux/s390x/ibm-java-sdk-8.0-4.10-s390x-archive.bin
+wget https://raw.githubusercontent.com/zos-spark/scala-workbench/master/files/installer.properties.java
+tail -n +3 installer.properties.java | tee installer.properties
+cat installer.properties
+chmod +x ibm-java-sdk-8.0-4.10-s390x-archive.bin
+sudo ./ibm-java-sdk-8.0-4.10-s390x-archive.bin -r installer.properties 
+export JAVA_HOME=/opt/ibm/java
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+#Get geode source
+rm -rf incubator-geode
+git clone https://github.com/apache/incubator-geode.git
+cd incubator-geode/
+git checkout rel/v1.2.0
+
+#Edit files
+sed -i &apos;6d&apos; &apos;gradle/wrapper/gradle-wrapper.properties&apos;
+sed -i &apos;$adistributionUrl=https\://services.gradle.org/distributions/gradle-3.1-bin.zip&apos; &apos;gradle/wrapper/gradle-wrapper.properties&apos;
+git diff || true
+
+#Build
+./gradlew build installDist -x test
+
+#Test
+rm -rf $WS/testlog $WS/x86_failures $WS/s390x_failures
+./gradlew test 2&gt;&amp;1 | tee $WS/testlog
+
+#Store x86 failures and intermittent failures on s390x as expected failures. Intermittent failures will be run separately.
+echo &quot;org.apache.geode.internal.cache.xmlcache.CacheXmlParserJUnitTest &gt; testCacheXmlParserWithSimplePool FAILED
+org.apache.geode.internal.size.ObjectSizerJUnitTest &gt; test FAILED
+org.apache.geode.internal.size.SizeClassOnceObjectSizerJUnitTest &gt; test FAILED
+org.apache.geode.internal.size.WellKnownClassSizerJUnitTest &gt; testStrings FAILED
+org.apache.geode.distributed.internal.deadlock.DeadlockDetectorTest &gt; testNoDeadlocks FAILED
+org.apache.geode.distributed.internal.deadlock.DeadlockDetectorTest &gt; testProgrammaticDependencies FAILED
+:geode-core:test FAILED
+BUILD FAILED&quot; &gt;$WS/x86_failures
+
+#Extract failures from testlog
+cat $WS/testlog | grep FAILED &gt;$WS/s390x_failures
+cat $WS/s390x_failures
+
+#Fail the job if any extra failure occurred apart from expected failures
+if diff -u --ignore-all-space &lt;(sort $WS/s390x_failures) &lt;(sort $WS/x86_failures) | grep -q -i &quot;\-org&quot;; then
+	echo &quot;Unexpected failures found!&quot;
+    exit 1
+fi
+
+#Run intermittent tests individually
+./gradlew :geode-core:test --tests &quot;org.apache.geode.distributed.internal.deadlock.DeadlockDetectorTest.testProgrammaticDependencies&quot;
+
+#Verify binary
+export PATH=$PATH:$WS/incubator-geode/geode-assembly/build/install/apache-geode/bin
+gfsh
+
+sleep 60s
+ps -aef 
+
+pgrep -d&quot; &quot; -f &quot;gradle&quot; | xargs kill;
+ps -aef </command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@srajmane</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

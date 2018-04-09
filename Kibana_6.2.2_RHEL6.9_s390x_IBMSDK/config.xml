@@ -1,0 +1,140 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 16 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 16 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Install dependencies
+sudo yum install -y curl wget tar java-1.8.0-ibm-devel  make flex zip unzip git vim  gcc gcc-c++ libstdc++-* binutils-devel bzip2 which automake autoconf libtool zlib  pkgconfig zlib-devel curl bison glibc* python-setuptools python-setuptools-devel python-devel swig numpy libcurl-devel scipy make
+
+#Set Environment Variables
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-ibm.s390x
+export PATH=$JAVA_HOME/bin:$PATH
+export WORK_DIR=`pwd`
+java -version
+
+#Build GCC 7.3.0
+cd $WORK_DIR
+# wget ftp://gcc.gnu.org/pub/gcc/releases/gcc-6.1.0/gcc-6.1.0.tar.gz
+wget ftp://gcc.gnu.org/pub/gcc/releases/gcc-7.3.0/gcc-7.3.0.tar.gz
+tar -xvzf gcc-7.3.0.tar.gz
+cd gcc-7.3.0
+./contrib/download_prerequisites
+cd ..
+mkdir gccbuild
+cd gccbuild/ 
+../gcc-7.3.0/configure --prefix=&quot;/opt/gcc&quot; --enable-shared --with-system-zlib --enable-threads=posix --enable-__cxa_atexit --enable-checking --enable-gnu-indirect-function --enable-languages=&quot;c,c++&quot; --disable-bootstrap --disable-multilib
+make &amp;&amp; sudo make install
+export PATH=/opt/gcc/bin:$PATH  
+cd /opt/gcc/lib64
+sudo cp /opt/gcc/lib64/libstdc++.so.6 /usr/lib64/libstdc++.so.6
+
+
+# Install Node.js
+cd $WORK_DIR
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/nodejs/6.12.2.0/linux/s390x/ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin 
+chmod +x ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin
+echo -e &quot;LICENSE_ACCEPTED=TRUE\nUSER_INSTALL_DIR=$WORK_DIR/ibm/node\n-fileOverwrite_$WORK_DIR/ibm/node/_node_installation/uninstall.lax=Yes&quot; &gt; installer.properties
+cat installer.properties
+./ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin -f installer.properties -i silent
+
+export PATH=$PATH:$WORK_DIR/ibm/node/bin
+node -v
+
+#Get Kibana release package and extract
+cd $WORK_DIR
+wget https://artifacts.elastic.co/downloads/kibana/kibana-6.2.2-linux-x86_64.tar.gz
+tar xvf kibana-6.2.2-linux-x86_64.tar.gz
+
+
+#Replace Node.js in the package with the installed IBM SDK for Node.js.
+cd kibana-6.2.2-linux-x86_64
+mv node node_old
+ln -s $WORK_DIR/ibm/node  node
+
+ 
+# Start Kibana 
+
+cd $WORK_DIR
+wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-6.2.2.tar.gz
+tar -xvf elasticsearch-6.2.2.tar.gz
+ls
+nohup elasticsearch-6.2.2/bin/elasticsearch &amp;
+sleep 2m
+
+cd $WORK_DIR/kibana-6.2.2-linux-x86_64
+bin/kibana -H 0.0.0.0 &amp;
+
+sleep 2m
+
+curl http://localhost:5601
+
+pgrep -d&quot; &quot; -f &quot;node&quot; | xargs kill;
+pgrep -d&quot; &quot; -f &quot;elasticsearch&quot; | xargs kill;
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@chandranana.naik,@ketank</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

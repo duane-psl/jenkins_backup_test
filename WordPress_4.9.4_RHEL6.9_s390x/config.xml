@@ -1,0 +1,114 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc 
+# Install dependencies
+sudo yum install -y httpd php php-mysql git mysql mysql-server sed 
+
+
+line=&quot;\/var\/www\/html&quot;
+line_new=&quot;\/var\/www\/html\/WordPress&quot;
+sudo sed -i &quot;s/$line/$line_new/g&quot; /etc/httpd/conf/httpd.conf
+#sudo sed -i &quot;s/\/var\/www\/html\/ \/var\/www\/html\/WordPress\/&quot; /etc/httpd/conf/httpd.conf
+
+sudo chmod 777 /etc/httpd/conf/httpd.conf
+sudo echo -e &quot;ServerName localhost&quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+sudo echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+sudo echo -e &quot; DirectoryIndex index.php &quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+
+cd /var/www/html
+sudo rm -rf WordPress
+sudo git clone git://github.com/WordPress/WordPress.git
+cd WordPress
+sudo git checkout 4.9.4
+
+
+sudo mv wp-config-sample.php wp-config.php 
+
+sudo sed -i &quot;s/localhost/127.0.0.1/&quot; wp-config.php
+sudo sed -i &quot;s/database_name_here/WORDPRESS/&quot; wp-config.php
+sudo sed -i &quot;s/username_here/Wordpress/&quot; wp-config.php
+sudo sed -i &quot;s/password_here/password/&quot; wp-config.php
+
+sudo /usr/bin/mysql_install_db --user=mysql
+sleep 40s
+sudo /usr/bin/mysqld_safe --user=mysql &amp;  
+sleep 60s
+sudo /usr/bin/mysql -e &quot;create database WORDPRESS&quot; 
+sudo /usr/bin/mysql -e &quot;create user &apos;Wordpress&apos;@&apos;localhost&apos; identified by &apos;password&apos;&quot; 
+sudo /usr/bin/mysql -e &quot;grant all privileges on WORDPRESS.* to &apos;Wordpress&apos;@&apos;localhost&apos; identified by &apos;password&apos; with GRANT OPTION&quot;  
+
+sudo /usr/sbin/httpd -D BACKGROUND
+
+curl http://127.0.0.1:80
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

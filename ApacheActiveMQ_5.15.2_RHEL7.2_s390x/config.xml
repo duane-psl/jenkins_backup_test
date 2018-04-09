@@ -1,0 +1,118 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.2_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H  13  *  *  4</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H  13  *  *  4</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+# Install dependencies
+sudo yum install -y java-1.8.0-openjdk-devel.s390x tar wget git 
+
+# Set Environment Variables
+export WORK_DIR=`pwd`
+export MAVEN_OPTS=&quot;-Xms1024m -Xmx1024m&quot;
+export JAVA_HOME=/usr/lib/jvm/java
+export PATH=$PATH:$JAVA_HOME/bin
+export M2_HOME=$PWD/apache-maven-3.5.0
+export PATH=$M2_HOME/bin:$PATH
+java -version
+
+# Install maven
+cd $WORK_DIR
+wget https://archive.apache.org/dist/maven/maven-3/3.5.0/binaries/apache-maven-3.5.0-bin.tar.gz
+tar -xvzf apache-maven-3.5.0-bin.tar.gz
+
+
+# Build &amp; Install activemq
+cd $WORK_DIR
+git clone -b activemq-5.15.2 https://github.com/apache/activemq.git
+cd activemq
+mvn clean install -Dmaven.test.skip=true
+tar -xzf ~/.m2/repository/org/apache/activemq/apache-activemq/5.15.2/apache-activemq-5.15.2-bin.tar.gz
+
+# Smoke Test (Optional)
+mvn -Dactivemq.tests=smoke test -fn
+
+# Verify Apache ActiveMQ is starting correctly
+cd apache-activemq-5.15.2/bin
+./activemq start
+sleep 60
+cat ../data/activemq.log
+sleep 30
+grep &quot;Apache ActiveMQ 5.15.2 (localhost, ID:*.&quot; ../data/activemq.log &gt; started_log
+sleep 30
+cat started_log
+if grep -q &quot;started&quot; started_log
+then 
+  ./activemq bstat
+  ./activemq stop &gt; stopped_log
+  if grep -q &quot;Stopping broker: localhost&quot; stopped_log; then exit 0; else exit 1; fi 
+else 
+  exit 1
+fi
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

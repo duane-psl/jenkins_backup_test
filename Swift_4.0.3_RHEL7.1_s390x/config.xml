@@ -1,0 +1,335 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel7.1-8192MB</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 18 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 18 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;swift&quot;
+published_version=&quot;4.0.3&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+
+export Workdir=`pwd`
+#Install prerequisites
+
+
+
+cat /etc/os*
+sudo yum install -y binutils-devel gcc-c++ git \
+       libcurl-devel bzip2-devel sqlite-devel \
+       libicu-devel libuuid-devel libxml2-devel ncurses-devel \
+       python-devel swig xz-devel wget tar make \
+       rpm-build rpmdevtools libedit-devel glibc-devel \
+       autoconf libtool automake which openssl-devel \
+       cpio curl-devel expat-devel gcc gettext-devel \
+       perl-ExtUtils-MakeMaker zlib-devel libatomic
+
+
+cd $HOME
+wget https://github.com/git/git/archive/v2.13.0.tar.gz
+tar xzf v2.13.0.tar.gz
+cd git-2.13.0
+make configure
+./configure --prefix=/opt/git
+make
+sudo make install
+export PATH=/opt/git/bin:$PATH
+cd ..
+
+
+sudo yum remove -y perl-devel gdbm-devel libdb-devel expat-devel
+wget https://cmake.org/files/v3.5/cmake-3.5.2.tar.gz
+tar xzf cmake-3.5.2.tar.gz
+cd cmake-3.5.2
+./configure --prefix=/opt/cmake
+make
+sudo make install
+export PATH=/opt/cmake/bin:$PATH
+cd ..
+
+git clone https://github.com/curl/curl.git
+cd curl
+git checkout curl-7_37_0
+./buildconf
+./configure --prefix=/opt/curl
+make
+sudo make install
+cd ..
+
+export PATH=/opt/curl/bin:$PATH
+export LD_LIBRARY_PATH=/opt/curl/lib:$LD_LIBRARY_PATH
+export CPATH=/opt/curl/include:$CPATH
+
+wget http://repos.opensuse.org/repositories/server:/mail/CentOS_6/src/libbsd-0.7.0-2.1.src.rpm
+rpmbuild --rebuild libbsd-0.7.0-2.1.src.rpm
+cd $HOME/rpmbuild/RPMS/s390x/
+sudo rpm -i libbsd0-0.7.0-2.1.s390x.rpm \
+            libbsd-devel-0.7.0-2.1.s390x.rpm
+cd $HOME
+sudo cp /usr/include/unistd.h /usr/include/unistd.h.orig
+
+sudo sed -i -e &apos;s/\*__block/\*__libc_block/g&apos; /usr/include/unistd.h
+
+
+#Install Blocks runtime library:
+cd $Workdir
+git clone https://github.com/mackyle/blocksruntime
+cd blocksruntime
+./buildlib
+sudo env prefix=/usr ./installlib
+cd ..
+
+#Install Gold Linker
+echo `pwd`
+sudo yum install -y bison flex texinfo
+git clone git://sourceware.org/git/binutils-gdb.git
+cd binutils-gdb
+git checkout tags/binutils-2_27
+./configure --prefix=/opt/binutils-2.27 --enable-gold
+make
+sudo make install
+
+export PATH=/opt/binutils-2.27/bin:$PATH
+cd ..
+
+echo `pwd`
+#Building LLVM/clang
+cd $Workdir
+mkdir llvm &amp;&amp; cd llvm
+git clone https://github.com/linux-on-ibm-z/llvm.git
+cd llvm
+git checkout llvm-for-swift-3.1
+cd tools
+git clone https://github.com/linux-on-ibm-z/clang.git
+cd clang
+git checkout clang-for-swift-3.1
+cd ../../projects
+git clone https://github.com/linux-on-ibm-z/compiler-rt.git
+cd compiler-rt
+git checkout compiler-rt-for-swift-3.1
+cd ../..
+
+echo `pwd`
+#Run cmake outside the source tree to configure LLVM
+
+cd ..
+mkdir build
+
+cd build
+cmake -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/llvm \
+        ../llvm
+
+make -j4
+make check   # optional
+sudo make install # or &quot;sudo make install&quot;
+cd ../..
+export PATH=/opt/llvm/bin:$PATH
+
+
+#Building Swift
+echo `pwd`
+mkdir swift4 &amp;&amp; cd swift4
+git clone https://github.com/linux-on-ibm-z/swift.git
+cd swift
+git checkout swift-4.0.3-RELEASE-s390x
+./utils/update-checkout --clone --scheme swift-4.0.3-RELEASE-s390x --config $PWD/utils/update-checkout-config-s390x.json
+
+
+export MYDESTDIR=$HOME/swift/install
+
+ ./utils/build-script -j 2 -r \
+ --lldb --foundation --xctest --llbuild --swiftpm --libdispatch -- \
+ --verbose-build=1 \
+ --install-swift --install-foundation --install-xctest --install-llbuild --install-swiftpm --install-libdispatch --install-lldb \
+ --swift-install-components=&apos;autolink-driver;compiler;clang-builtin-headers;stdlib;sdk-overlay;license&apos; \
+ --build-swift-static-stdlib=1 \
+ --install-prefix=/usr \
+ --install-destdir=$MYDESTDIR 2&gt;&amp;1 | tee $Workdir/utilbuildlog
+ 
+ grep &quot;file INSTALL cannot find&quot; $Workdir/utilbuildlog &gt;&gt; $Workdir/utilbuildlog_error
+ echo &quot;file INSTALL cannot find&quot; &gt;&gt; $Workdir/utilbuildlog_expectederror
+ 
+ diff -u --ignore-all-space &lt;(sort $Workdir/utilbuildlog_expectederror) &lt;(sort $Workdir/utilbuildlog_error)
+
+#Replace all occurrences of /lib with /lib64 in build/Ninja-RelWithDebInfoAssert/lldb-linux-s390x/scripts/cmake_install.cmake
+cp -v $Workdir/swift31/build/Ninja-RelWithDebInfoAssert/lldb-linux-s390x/scripts/cmake_install.cmake $Workdir/swift31/build/Ninja-RelWithDebInfoAssert/lldb-linux-s390x/scripts/cmake_install.cmake.org
+
+sed -i &quot;s/lib/lib64/g&quot; $Workdir/swift31/build/Ninja-RelWithDebInfoAssert/lldb-linux-s390x/scripts/cmake_install.cmake
+
+
+cp -v $Workdir/swift31/build/Ninja-RelWithDebInfoAssert/lldb-linux-s390x/scripts/Python/modules/readline/cmake_install.cmake $Workdir/swift31/build/Ninja-RelWithDebInfoAssert/lldb-linux-s390x/scripts/Python/modules/readline/cmake_install.cmake.org
+sed -ie &quot;s/lib\/python2.7/lib64\/python2.7/g&quot; $Workdir/swift31/build/Ninja-RelWithDebInfoAssert/lldb-linux-s390x/scripts/Python/modules/readline/cmake_install.cmake
+
+
+ ./utils/build-script -j 2 -r \
+ --lldb --foundation --xctest --llbuild --swiftpm --libdispatch -- \
+ --verbose-build=1 \
+ --install-swift --install-foundation --install-xctest --install-llbuild --install-swiftpm --install-libdispatch --install-lldb \
+ --swift-install-components=&apos;autolink-driver;compiler;clang-builtin-headers;stdlib;sdk-overlay;license&apos; \
+ --build-swift-static-stdlib=1 \
+ --install-prefix=/usr \
+ --install-destdir=$MYDESTDIR
+
+
+#To run the Swift compiler:
+export PATH=$MYDESTDIR/usr/bin:/opt/llvm/bin:/opt/binutils-2.26/bin:$PATH
+echo `pwd`
+echo &apos;print(&quot;Hello World&quot;)&apos; &gt; hello.swift
+swiftc -v hello.swift
+./hello
+
+#Running Test
+
+#Run unit tests
+
+./utils/build-script -j 2 -r -t 2&gt;&amp;1 | tee $Workdir/testunit
+
+sed -n -e &apos;/Failing Tests/,$p&apos; $Workdir/testunit |  sed -e &apos;/Expected/,$d&apos; | tee $Workdir/generated_failuresunit
+
+echo &quot;Failing Tests (6):
+    Swift(linux-s390x) :: IRGen/objc_simd.sil
+    Swift(linux-s390x) :: stdlib/VarArgs.swift
+    Swift(linux-s390x) :: Interpreter/enum_resilience.swift
+    Swift(linux-s390x) :: stdlib/Runtime.swift.gyb
+    Swift(linux-s390x) :: stdlib/UnsafeRawBufferPointer.swift
+    Swift(linux-s390x) :: stdlib/StringAPI.swift
+
+ &quot; &gt;$Workdir/expectedfailuresunit
+ 
+diff -u --ignore-all-space -B &lt;(sort $Workdir/expectedfailuresunit) &lt;(sort $Workdir/generated_failuresunit)
+#Complete validation test suite
+
+./utils/build-script -j 2 --assertions --release --test --validation-test --lit-args=-v 2&gt;&amp;1 | tee $Workdir/testval 
+sed -n -e &apos;/Failing Tests/,$p&apos; $Workdir/testval |  sed -e &apos;/Expected/,$d&apos; | tee $Workdir/generated_failuresval
+
+echo &quot;Failing Tests (9):
+    Swift(linux-s390x) :: stdlib/UnsafeRawBufferPointer.swift
+    Swift(linux-s390x) :: Interpreter/enum_resilience.swift
+    Swift(linux-s390x) :: stdlib/Runtime.swift.gyb
+    Swift(linux-s390x) :: stdlib/StringAPI.swift
+    Swift(linux-s390x) :: stdlib/VarArgs.swift
+    Swift(linux-s390x) :: IRGen/objc_simd.sil
+    Swift(linux-s390x) :: stdlib/String.swift
+    Swift(linux-s390x) :: stdlib/SequenceType.swift.gyb
+    Swift(linux-s390x) :: Evolution/test_enum_change_size.swift
+    
+    &quot;&gt;$Workdir/expectedfailuresval
+
+
+diff -u --ignore-all-space -B &lt;(sort $Workdir/expectedfailuresval) &lt;(sort $Workdir/generated_failuresval)
+
+#To run tests in Foundation and Swift Package Manager
+./utils/build-script -j 2 -r -t \
+--lldb --xctest --foundation --llbuild --swiftpm --libdispatch -- \
+--verbose-build=1 \
+--swift-install-components=&apos;autolink-driver;compiler;clang-builtin-headers;stdlib;sdk-overlay;license&apos; \
+--build-swift-static-stdlib=1 \
+--install-prefix=/usr \
+--skip-test-cmark --skip-test-swift --skip-test-lldb --skip-test-llbuild --skip-test-xctest --skip-test-libdispatch 2&gt;&amp;1 | tee $Workdir/testmang
+
+grep &quot;failed&quot; $Workdir/testmang &gt;&gt; $Workdir/testmangfailed
+sed &apos;s/failed.*/failed/&apos; $Workdir/testmangfailed 2&gt;&amp;1 | tee $Workdir/testmangfailed1
+
+echo &quot;TestFoundation/TestNSHTTPCookie.swift:158: error: TestNSHTTPCookie.test_cookiesWithResponseHeaderNoDomain : XCTAssertNotNil failed
+TestFoundation/TestNSHTTPCookie.swift:167: error: TestNSHTTPCookie.test_cookiesWithResponseHeaderNoDomain : failed
+Test Case &apos;TestNSHTTPCookie.test_cookiesWithResponseHeaderNoDomain&apos; failed
+Test Suite &apos;TestNSHTTPCookie&apos; failed
+TestFoundation/TestNSString.swift:420: error: TestNSString.test_swiftStringUTF16 : XCTAssertTrue failed
+Test Case &apos;TestNSString.test_swiftStringUTF16&apos; failed
+Test Suite &apos;TestNSString&apos; failed
+TestFoundation/TestNSTimeZone.swift:166: error: TestNSTimeZone.test_initializingTimeZoneWithAbbreviation : XCTAssertEqual failed
+Test Case &apos;TestNSTimeZone.test_initializingTimeZoneWithAbbreviation&apos; failed
+Test Suite &apos;TestNSTimeZone&apos; failed
+Test Suite &apos;TestFoundation.xctest&apos; failed
+Test Suite &apos;All tests&apos; failed
+&quot;&gt;$Workdir/expectedfailuremang
+
+
+
+diff -u --ignore-all-space -B &lt;(sort $Workdir/expectedfailuremang) &lt;(sort $Workdir/testmangfailed1)</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@srajmane</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

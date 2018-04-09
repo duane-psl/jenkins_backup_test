@@ -1,0 +1,199 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-SP2_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 11 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;drupal&quot;
+published_version=&quot;8.4.5&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+#-----------------------------------------------------------------------------------------
+export WORK_DIR=`pwd`
+export DEBIAN_FRONTEND=noninteractive
+
+sudo zypper update -y
+cat /etc/os*
+
+sudo zypper install -y vim tar wget curl libjpeg8-devel libpng-devel curl-devel cronie openssh libicu-devel pkg-config patch \
+     libxslt-devel gcc-c++ cmake mariadb libmysqld-devel apache2 apache2-devel libmcrypt libmcrypt-devel net-tools libpcre1
+     
+
+###Install PHP
+cd $WORK_DIR
+sudo rm -rf php-7.0.23
+wget http://www.php.net/distributions/php-7.0.23.tar.gz  
+tar xvzf php-7.0.23.tar.gz 	
+cd php-7.0.23
+./configure --with-apxs2=/usr/bin/apxs --without-pcre-jit --with-openssl --enable-soap --with-libxml-dir=/usr/lib64 --with-mysqli --with-gd --with-jpeg-dir=/usr/include/jpeglib.h --with-png-dir --with-pdo_mysql  --with-curl  --with-mcrypt --enable-mbstring --enable-intl --enable-zip  --with-xsl
+make   
+sudo make install
+sudo cp ./php.ini-development /usr/local/php/php.ini 
+export PATH=$PATH:/usr/local/php/bin
+php -v
+
+###Install Composer
+cd $WORK_DIR
+
+curl -sS https://getcomposer.org/installer | /usr/local/bin/php
+sudo mv composer.phar /usr/local/bin/composer
+chmod +x /usr/local/bin/composer
+export PATH=$PATH:/usr/local/bin/
+composer -V
+
+#Edit apache config files
+line1=&quot;Options None&quot;
+line2=&quot;Options Indexes FollowSymLinks&quot;
+line3=&quot;AllowOverride None&quot;
+line4=&quot;AllowOverride All&quot;
+
+###Modify the configuration files
+sudo chmod 766 /etc/apache2/httpd.conf
+sudo cp /etc/apache2/httpd.conf /etc/apache2/httpd.conf.old
+sudo echo -e &quot;ServerName localhost \t 
+AddType application/x-httpd-php .php \t
+AddHandler cgi-script .cgi \t
+&lt;Directory /&gt; \t
+DirectoryIndex index.php index.html index.var \t
+&lt;/Directory&gt; \t
+LoadModule php7_module /usr/lib64/apache2/libphp7.so \t
+LoadModule rewrite_module /usr/lib64/apache2/mod_rewrite.so \t
+DocumentRoot /srv/www/htdocs \t
+&lt;Directory /srv/www/htdocs&gt;  \t
+Options Indexes FollowSymLinks \t
+AllowOverride all \t
+Require all granted \t
+&lt;/Directory&gt; \t &quot; &gt;&gt;  /etc/apache2/httpd.conf
+
+sudo sed -i &quot;s/$line1/$line2/g&quot; /etc/apache2/default-server.conf
+sudo sed -i &quot;s/$line3/$line4/g&quot; /etc/apache2/default-server.conf
+
+sudo sed -i &apos;1770s/0/1/&apos; /usr/local/php/php.ini
+sudo sed -i &apos;1773s/64/128/&apos; /usr/local/php/php.ini
+sudo sed -i &apos;1776s/4/8/&apos; /usr/local/php/php.ini
+sudo sed -i &apos;1780s/2000/4000/&apos; /usr/local/php/php.ini
+sudo sed -i &apos;1798s/1/60/&apos; /usr/local/php/php.ini
+sudo sed -i &apos;1809s/0/1/&apos; /usr/local/php/php.ini
+
+sudo a2enmod rewrite
+sudo a2enmod php
+
+
+###Create Drupal database
+sudo /usr/bin/mysql_install_db --user=mysql
+sleep 15s
+sudo mkdir -p  /var/log/mysql
+sudo sed -i &apos;701s/hostname/echo $HOSTNAME/&apos; /usr/bin/mysqld_safe 
+sudo /usr/bin/mysqld_safe --user=mysql &amp;  
+sleep 20s
+
+ln -s /var/run/mysql/mysql.sock /tmp/mysql.sock
+sudo mysql -e &quot;create database drupal&quot; 
+sudo mysql -e &quot;create user &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos;&quot; 
+sudo mysql -e &quot;grant all privileges on drupal.* to &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos; with GRANT OPTION&quot;
+
+##download Drupal source 
+cd $WORK_DIR
+wget https://ftp.drupal.org/files/projects/drupal-8.4.5.tar.gz
+tar -zxvf drupal-8.4.5.tar.gz 
+sudo mkdir -p /srv/www/htdocs/Drupal 
+cd drupal-8.4.5
+sudo mv * .htaccess .csslintrc .editorconfig .eslintignore .eslintrc.json .gitattributes /srv/www/htdocs/Drupal/
+cd /srv/www/htdocs/Drupal
+composer install 
+
+
+#Set permissions
+sudo mkdir sites/default/files 
+sudo chmod a+w sites/default/files 
+sudo chmod a+w sites/default 
+sudo cp sites/default/default.settings.php sites/default/settings.php 
+sudo chmod a+w sites/default/settings.php 
+ls /home/test/
+sudo cp /home/test/work/Drupal_8.4.3/sles_settings.php sites/default/settings.php
+
+sudo httpd -k restart
+sleep 10
+mysql -u drupal -pdrupal drupal &lt; /home/test/work/Drupal_8.4.3/drupal.sql
+sleep 60s
+wget -q  http://127.0.0.1:80/Drupal -O - | grep Welcome
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

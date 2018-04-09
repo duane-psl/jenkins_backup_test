@@ -1,0 +1,102 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel6.9</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 0 1 * *</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>cat /etc/system-release
+sudo yum install -y wget tar unzip git make gcc java-1.8.0-ibm-devel java-1.8.0-ibm
+
+rm -rf sourceroot
+mkdir sourceroot
+cd sourceroot
+export SRC_ROOT=`pwd`
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-ibm.s390x
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+cd $SRC_ROOT
+wget https://archive.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz
+tar -xvzf apache-maven-3.3.9-bin.tar.gz
+export PATH=$SRC_ROOT/apache-maven-3.3.9/bin:$PATH
+
+cd $SRC_ROOT
+git clone https://github.com/linux-on-ibm-z/mule.git
+cd $SRC_ROOT/mule
+git checkout mule-3.8.4-s390x
+export PATH=$PATH:$SRC_ROOT/mule/distributions/standalone/src/main/resources/conf
+
+mvn clean install -DskipDistributions=false -DskipTests -Pdistributions -fn
+
+mvn clean install -DskipDistributions=false -fn
+
+tar xzvf $SRC_ROOT/mule/distributions/standalone/target/mule-standalone-3.8.4.tar.gz -C $SRC_ROOT
+export PATH=$PATH:$SRC_ROOT/mule-standalone-3.8.4/bin
+
+cd $SRC_ROOT
+wget http://wrapper.tanukisoftware.com/download/3.5.30/wrapper-linux-390-64-3.5.30-st.tar.gz
+tar -xvzf wrapper-linux-390-64-3.5.30-st.tar.gz
+cp $SRC_ROOT/wrapper-linux-390-64-3.5.30-st/bin/wrapper $SRC_ROOT/mule-standalone-3.8.4/lib/boot/exec
+	
+mule</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@bhatekar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

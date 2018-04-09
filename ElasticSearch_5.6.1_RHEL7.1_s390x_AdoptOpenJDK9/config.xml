@@ -1,0 +1,165 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.1_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 21 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;elasticsearch&quot;
+published_version=&quot;5.6.1&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+export WORK_DIR=`pwd`
+#Install Build Dependencies
+sudo yum install -y tar wget unzip curl which git gcc-c++ make automake autoconf libtool libstdc++-static tar wget patch words libXt-devel libX11-devel texinfo ant ant-junit.noarch 
+
+
+#Install AdoptJDK
+cd $WORK_DIR
+wget https://github.com/AdoptOpenJDK/openjdk9-releases/releases/download/jdk-9%2B181/OpenJDK9_s390x_Linux_jdk-9.181.tar.gz
+tar -xvf OpenJDK9_s390x_Linux_jdk-9.181.tar.gz
+export JAVA_HOME=$WORK_DIR/jdk-9+181/ 
+export PATH=$JAVA_HOME/bin:$PATH
+java -version 
+
+#Set the environment variable
+unset JAVA_TOOL_OPTIONS
+export LANG=&quot;en_US.UTF-8&quot;
+export JAVA_TOOL_OPTIONS=&quot;-Dfile.encoding=UTF8&quot;
+export ANT_HOME=/usr/share/ant/
+export PATH=$ANT_HOME/bin:$PATH
+
+#Download Gradle 3.3 and add to the path
+wget https://services.gradle.org/distributions/gradle-3.3-bin.zip
+unzip gradle-3.3-bin.zip
+export PATH=$PATH:$WORK_DIR/gradle-3.3/bin
+gradle --version
+
+
+cd $WORK_DIR
+# Download Elasticsearch source code
+sudo rm -rf elasticsearch
+git clone https://github.com/elastic/elasticsearch
+cd elasticsearch
+git checkout v5.6.1
+
+#Build Package
+gradle assemble
+
+#Testing
+#Build JNA
+cd $WORK_DIR
+sudo rm -rf jna
+git clone https://github.com/java-native-access/jna.git
+cd jna
+git checkout 4.4.0
+ant 2&gt;&amp;1 | tee build_logs 
+
+#Replace the jar files
+cd $HOME/.gradle/caches/modules-2/files-2.1/org.elasticsearch/jna/4.4.0-1/c9dfcec6f07ee4b1d7a6c09a7eaa9dd4fb6d2c79/ 
+mv jna-4.4.0-1.jar jna-4.4.0-1.jar.old 
+cp $WORK_DIR/jna/build/jna.jar jna-4.4.0-1.jar
+
+
+java -XX:+PrintFlagsFinal | grep G1GC
+## Run Network test cases
+cd $WORK_DIR/elasticsearch
+gradle test --continue -Dtests.haltonfailure=false -Dtests.es.node.mode=network  
+
+# Run Local test cases
+cd $WORK_DIR/elasticsearch
+gradle test --continue -Dtests.haltonfailure=false -Dtests.es.node.mode=local
+
+#Verification Steps
+sudo yum install -y hostname 
+sudo tar -C /usr/share/ -xf  distribution/tar/build/distributions/elasticsearch-5.6.1-SNAPSHOT.tar.gz
+sudo rm -rf /usr/share/elasticsearch
+sudo mv /usr/share/elasticsearch-5.6.1-SNAPSHOT /usr/share/elasticsearch
+sudo cp $WORK_DIR/jna/build/jna.jar /usr/share/elasticsearch/lib/jna-4.4.0-1.jar
+
+#Start Elastic Search Server
+sudo chown test:test -R /usr/share/elasticsearch
+/usr/share/elasticsearch/bin/elasticsearch --version | grep 5.6.1
+nohup /usr/share/elasticsearch/bin/elasticsearch &amp;
+sleep 30s
+curl http://localhost:9200/</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>true</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

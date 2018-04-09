@@ -1,0 +1,153 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.3_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 15 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 15 * * 3</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Set the below parameters manually
+package_name=&quot;cadvisor&quot;
+published_version=&quot;0.27.4&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+# Building and Installing cAdvisor 
+export WORK_DIR=`pwd`
+
+# Install the dependencies
+sudo yum install -y git libseccomp-devel golang
+
+# Export go path
+export GOPATH=$WORK_DIR
+export PATH=$PATH:$GOPATH/bin
+
+# Install godep tool
+go get github.com/tools/godep
+
+# Checkout the code from repository
+rm -rf $GOPATH/src/github.com/google
+mkdir -p $GOPATH/src/github.com/google
+cd $GOPATH/src/github.com/google
+git clone https://github.com/google/cadvisor.git
+cd cadvisor  
+git checkout v0.27.4
+
+echo -e &quot; func updateCastagnoli(crc uint32, p []byte) uint32 { \n // only use slicing-by-8 when input is &gt;= 16 Bytes \n if len(p) &gt;= 16 { \n return updateSlicingBy8(crc, castagnoliTable8, p) \n } \n return update(crc, castagnoliTable, p) \n } \n &quot;  &gt;&gt; vendor/github.com/klauspost/crc32/crc32.go	
+echo -e &quot;func updateIEEE(crc uint32, p []byte) uint32 { \n // only use slicing-by-8 when input is &gt;= 16 Bytes \n  if len(p) &gt;= 16 { \n  iEEETable8Once.Do(func() { \n iEEETable8 = makeTable8(IEEE) \n }) \n return updateSlicingBy8(crc, iEEETable8, p) \n  } \n  return update(crc, IEEETable, p) \n  } \n &quot; &gt;&gt; vendor/github.com/klauspost/crc32/crc32.go
+cat vendor/github.com/klauspost/crc32/crc32.go
+
+#  Build cAdvisor
+cd $GOPATH/src/github.com/google/cadvisor
+godep go build .
+
+#  Run unit tests
+cd $GOPATH/src/github.com/google/cadvisor 
+go test -short `go list ./... | grep -v Microsoft` 2&gt;&amp;1 | tee outputfile.txt
+
+grep &quot;^FAIL&quot; outputfile.txt &gt; generated_failures.txt
+cat generated_failures.txt
+awk &apos;{print $1 &quot; &quot; $2}&apos; generated_failures.txt &gt; failures.txt
+echo &apos;FAIL github.com/google/cadvisor/machine&apos; &gt; expected_failures.txt
+cat failures.txt
+cat expected_failures.txt
+
+# Veriication step 
+result=`diff expected_failures.txt failures.txt`
+if [ -z &quot;$result&quot; ] ; then
+ 	sudo ./cadvisor &amp;
+	sleep 180s
+    curl http://127.0.0.1:8080/containers/ &gt; cadvisorpage.txt
+    if grep -q &quot;Docker Containers&quot;  &quot;cadvisorpage.txt&quot;; then
+    	exit 0
+    else
+    	exit 1
+    fi
+ 
+else
+  exit 1
+fi
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @narang</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

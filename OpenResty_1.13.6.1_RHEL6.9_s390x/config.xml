@@ -1,0 +1,204 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 22 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 22 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Set the below parameters manually
+package_name=&quot;openresty&quot;
+published_version=&quot;1.13.6.1&quot;
+
+
+available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+PRETTY_NAME=&quot;Red Hat Enterprise Linux Server release 6.9 (Santiago)&quot;
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo for $PRETTY_NAME.&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+#Building OpenResty 1.11.2.5
+# Prerequisites:LuaJIT
+export WORK_DIR=`pwd`
+cd $WORK_DIR
+
+sudo rm -rf *
+
+cat /etc/red*
+sudo yum install -y gcc make git
+export WORK_DIR=`pwd`
+cd $WORK_DIR
+git clone https://github.com/linux-on-ibm-z/LuaJIT.git
+cd LuaJIT
+git checkout v2.1
+cd $WORK_DIR/LuaJIT/
+make
+sudo make install
+sudo rm -rf /usr/local/bin/luajit
+sudo ln -s luajit-2.1.0-beta2 /usr/local/bin/luajit
+
+#Install the dependencies
+
+sudo yum install -y git tar wget make gcc gcc-c++ unix2dos hg postgresql-devel patch pcre-devel readline-devel openssl openssl-devel 
+cd $WORK_DIR
+sudo yum install -y binutils-devel bzip2
+ wget http://ftp.gnu.org/gnu/gcc/gcc-4.8.2/gcc-4.8.2.tar.bz2
+ tar xvf gcc-4.8.2.tar.bz2
+ cd gcc-4.8.2
+ ./contrib/download_prerequisites
+ mkdir $WORK_DIR/gccbuild
+ cd $WORK_DIR/gccbuild
+ ../gcc-4.8.2/configure  --prefix=&quot;/opt/gcc&quot;  --enable-shared --with-system-zlib --enable-threads=posix  --enable-__cxa_atexit --enable-checking --enable-gnu-indirect-function  --enable-languages=&quot;c,c++&quot; --disable-bootstrap --disable-multilib
+ make all
+ sudo make install
+ export PATH=/opt/gcc/bin:$PATH
+ export LD_LIBRARY_PATH=/opt/gcc/lib64:/opt/gcc/lib:$LD_LIBRARY_PATH
+ sudo mv /usr/bin/gcc /usr/bin/gcc.bkup
+ sudo ln -s /opt/gcc/bin/gcc /usr/bin/gcc
+export PATH=$PATH:/sbin
+gcc --version
+cd $WORK_DIR
+wget http://www.cpan.org/src/5.0/perl-5.24.1.tar.gz
+ tar xvf perl-5.24.1.tar.gz
+ cd perl-5.24.1
+ ./Configure -des -Dprefix=/usr/local/perl -Dnoextensions=ODBM_File
+ make
+ sudo make install
+ export PATH=/usr/local/perl/bin/:$PATH
+ perl -v
+#Download the source code
+
+cd $WORK_DIR
+
+wget https://openresty.org/download/openresty-1.13.6.1.tar.gz
+tar -xvf openresty-1.13.6.1.tar.gz
+
+cd $WORK_DIR/openresty-1.13.6.1
+cp configure configure.ori
+sed -i &apos;641,680 s/^/#/&apos; configure
+diff -u configure.ori configure 2&gt;&amp;1 | tee changediff
+
+
+sudo rm -vrf $WORK_DIR/openresty-1.13.6.1/bundle/LuaJIT-2.1-20171103/
+sudo cp -vrf $WORK_DIR/LuaJIT $WORK_DIR/openresty-1.13.6.1/bundle/LuaJIT-2.1-20171103/ 
+ 
+cd $WORK_DIR/openresty-1.13.6.1
+./configure --without-http_redis2_module --with-http_iconv_module --with-http_postgres_module  -j2 
+make -j2
+sudo make install
+cd $WORK_DIR/openresty-1.13.6.1/build/nginx-1.13.6
+./configure &amp;&amp; make &amp;&amp; sudo make install
+
+## Install cpan modules
+
+sudo /usr/local/perl/bin/cpan Cwd IPC::Run3 Test::Base Test::LongString
+
+## Download files to run sanity tests on Openresty 
+cd $WORK_DIR/openresty-1.13.6.1
+mkdir t
+cd $WORK_DIR/openresty-1.13.6.1/t
+wget https://raw.githubusercontent.com/openresty/openresty/v1.13.6.1/t/Config.pm
+wget https://raw.githubusercontent.com/openresty/openresty/v1.13.6.1/t/sanity.t
+
+sed -i &apos;23,26d&apos; Config.pm
+
+
+cd $WORK_DIR/openresty-1.13.6.1/t
+cp sanity.t sanity.t.orig
+
+
+
+sed -i &quot;/configure line 663/d&quot; sanity.t
+sed -i &quot;/INFO: found -msse4.2 in cc./d&quot; sanity.t
+sed -i &quot;/WARNING: -msse4.2/d&quot; sanity.t
+sed -i &quot;s/ XCFLAGS=&apos;-msse4.2&apos;//g&quot; sanity.t
+sed -i &quot;s/ -msse4.2//g&quot; sanity.t
+sed -i &quot;s/-msse4.2 -DLUAJIT_ENABLE_LUA52COMPAT/-DLUAJIT_ENABLE_LUA52COMPAT/g&quot; sanity.t
+
+
+cd $WORK_DIR/openresty-1.13.6.1
+## Run sanity tests
+prove -r t | tee oresty_test.log
+
+
+
+if grep -q &quot;All tests successful&quot; &quot;oresty_test.log&quot;; then
+   export PATH=/usr/local/openresty/bin:$PATH
+   resty -V  
+   exit 0
+else
+   exit 1
+fi
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@srajmane</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

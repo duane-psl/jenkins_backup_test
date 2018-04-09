@@ -1,0 +1,131 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-sp3_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 5</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+sudo zypper up -y
+###Install build dependencies
+sudo zypper install -y git wget tar cmake gcc gcc-c++ make ncurses-devel boost-devel check-devel libopenssl-devel bison scons glibc-locale gawk net-tools
+##Change the directory to server
+
+SOURCE_ROOT=`pwd`
+
+cd $SOURCE_ROOT
+wget https://github.com/MariaDB/server/archive/mariadb-10.2.13.tar.gz
+tar xzf mariadb-10.2.13.tar.gz
+cd server-mariadb-10.2.13
+
+#added
+cd $SOURCE_ROOT
+git clone git://github.com/MariaDB/mariadb-connector-c.git
+cd mariadb-connector-c
+git checkout v3.0.2
+cd ..
+cp -r mariadb-connector-c/* server-mariadb-10.2.13/libmariadb/
+
+sed -i &apos;231d&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_STATUS_IN_TRANS_READONLY       8192&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_SESSION_STATE_CHANGED      16384&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_STATUS_ANSI_QUOTES        32768&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+
+##Build, configure, install and execute test cases
+cd $SOURCE_ROOT/server-mariadb-10.2.13
+BUILD/autorun.sh
+./configure 
+make 
+sudo make install
+
+
+sudo useradd mysql
+sudo groupadd mysql
+cd /usr/local/mysql		
+sudo chmod -R o+rwx .
+ 
+sudo scripts/mysql_install_db --user=mysql
+sleep 20s 
+sudo cp support-files/mysql.server /etc/init.d/mysql
+
+sudo /usr/local/mysql/bin/mysqld_safe --user=mysql &amp;
+sleep 30s
+sudo bin/mysqladmin version --user=mysql
+
+cd $SOURCE_ROOT/server-mariadb-10.2.13
+make test
+  
+cd $SOURCE_ROOT
+git clone git://github.com/codership/galera.git
+cd galera
+git checkout release_25.3.21
+   
+scons strict_build_flags=0 --config=force
+
+sudo cp garb/garbd /usr/local/sbin/        
+sudo cp libgalera_smm.so /usr/local/lib64/
+sudo /sbin/ldconfig -v</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room></room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>false</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

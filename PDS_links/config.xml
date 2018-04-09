@@ -1,0 +1,125 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>preeti_pds_monitoring</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>@hourly</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Server URLs
+
+# We do the following two steps manually once in the container (when it is created), so that the build takes less time.
+#sudo apt-get update
+#sudo apt-get install -y curl
+
+urlStageExt=&quot;http://ecos0044.pok.stglabs.ibm.com:5001/pds/&quot;
+
+urlStageInt=&quot;http://ecos0044.pok.stglabs.ibm.com:5000/pds/&quot;
+
+urlLiveExt=&quot;http://148.100.110.182:80/pds/&quot;
+
+urlLiveInt1=&quot;http://ecos0044.pok.stglabs.ibm.com:9088/pds/&quot;
+
+urlLiveInt2=&quot;http://ecos0042.pok.stglabs.ibm.com:9088/pds/&quot;
+
+# Server Responses
+urlStageExt_STATUS=&quot;$(curl -IL --silent &quot;$urlStageExt&quot; | grep HTTP )&quot;;
+sleep 1
+urlStageInt_STATUS=&quot;$(curl -IL --silent &quot;$urlStageInt&quot; | grep HTTP )&quot;;
+sleep 1
+
+urlLiveExt_STATUS=&quot;$(curl -IL --silent &quot;$urlLiveExt&quot; | grep HTTP )&quot;;
+sleep 1
+
+urlLiveInt1_STATUS=&quot;$(curl -IL --silent &quot;$urlLiveInt1&quot; | grep HTTP )&quot;;
+sleep 1
+
+urlLiveInt2_STATUS=&quot;$(curl -IL --silent &quot;$urlLiveInt2&quot; | grep HTTP )&quot;;
+sleep 1
+
+# Check Responses
+exit_status=0;
+if echo &quot;$urlStageExt_STATUS&quot; | grep &apos;200&apos;; then
+ exit_status=$exit_status;
+else
+ exit_status=1;
+fi
+
+if echo &quot;$urlStageInt_STATUS&quot; | grep &apos;200&apos;; then
+exit_status=$exit_status;
+else
+exit_status=1;
+fi
+
+if echo &quot;$urlLiveExt_STATUS&quot; | grep &apos;200&apos;; then
+exit_status=$exit_status;
+else
+exit_status=1;
+fi
+
+if echo &quot;$urlLiveInt1_STATUS&quot; | grep &apos;200&apos;; then
+exit_status=$exit_status;
+else
+exit_status=1;
+fi
+
+if echo &quot;$urlLiveInt2_STATUS&quot; | grep &apos;200&apos;; then
+exit_status=$exit_status;
+else
+exit_status=1;
+fi
+
+
+# Job Status
+if [ $exit_status -eq 1 ]; then
+        echo &quot;Job Failed&quot;
+        exit 1
+else
+        echo &quot;Job Pass&quot;
+        exit 0
+fi
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>@preeti.khorjuvenkar,@ketank,@aborkar </room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

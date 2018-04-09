@@ -1,0 +1,223 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles11-sp4-8192</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Install dependencies
+
+export PATH=$PATH:/sbin
+
+# Create links for gcc
+sudo zypper install -y git subversion make gcc47-c++ tar wget xz perl-libwww-perl curl wget-openssl1 curl-openssl1 awk
+sudo zypper install -y ncurses-devel patch zlib-devel xz libbz2-devel
+sudo rm -rf /usr/bin/gcc /usr/bin/g++ /usr/bin/cc
+sudo ln -s /usr/bin/gcc-4.7 /usr/bin/gcc
+sudo ln -s /usr/bin/g++-4.7 /usr/bin/g++
+sudo ln -s /usr/bin/gcc /usr/bin/cc
+
+export JENKINS_HOME=`pwd`
+
+# Clone depot-tools and set PATH
+cd $JENKINS_HOME
+git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+export PATH=$(pwd)/depot_tools:$PATH
+export VPYTHON_BYPASS=&quot;manually managed python not supported by chrome operations&quot;
+
+# Download, configure and install OpenSSL 1.0.2e
+wget ftp://ftp.openssl.org/source/old/1.0.2/openssl-1.0.2.tar.gz
+tar -xf openssl-1.0.2.tar.gz
+cd openssl-1.0.2
+./Configure linux64-s390x 
+make 
+sudo make install
+export PATH=/usr/local/ssl/bin:$PATH
+openssl version
+
+# Download, configure and install python 2.7.11
+cd $JENKINS_HOME
+rm -f Python-2.7.11.tar.xz
+wget https://www.python.org/ftp/python/2.7.11/Python-2.7.11.tar.xz
+tar -xf Python-2.7.11.tar.xz
+cd Python-2.7.11
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+
+#Edit Modules/Setup
+cp $JENKINS_HOME/Python-2.7.11/Modules/Setup $JENKINS_HOME/Python-2.7.11/Modules/Setup.orig
+sed -i &apos;218d&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;218i SSL=/usr/local/ssl&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;219d&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;219i _ssl _ssl.c \\&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;220d&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;220i \\t-DUSE_SSL -I\$(SSL)/include -I\$(SSL)/include/openssl \\&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;221i \\t\$(SSL)/lib/libssl.a \$(SSL)/lib/libcrypto.a&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;223d&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;223i _hashlib _hashopenssl.c \\&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;224i \\t-DUSE_SSL -I\$(SSL)/include -I\$(SSL)/include/openssl \\&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -i &apos;225i \\t\$(SSL)/lib/libssl.a \$(SSL)/lib/libcrypto.a&apos; $JENKINS_HOME/Python-2.7.11/Modules/Setup
+sed -n 215,227p $JENKINS_HOME/Python-2.7.11/Modules/Setup
+
+
+make 
+sudo make install
+python --version
+
+#Download cacert file
+cd $JENKINS_HOME
+wget http://curl.haxx.se/ca/cacert.pem --no-check-certificate
+cp cacert.pem cacert.txt
+export SSL_CERT_FILE=`pwd`/cacert.txt
+
+#Obtain the V8 source code
+cd $JENKINS_HOME
+git clone git://github.com/ibmruntimes/v8z
+cd v8z
+git checkout 3.28-s390
+
+# Fetch source code for dependent lbraries
+make dependencies
+sed -i &quot;s/crsT/crs/g&quot; build/gyp/pylib/gyp/generator/make.py
+
+#Build v8
+make s390x -j4
+
+# Build v8 with shared libraries
+make s390x -j4 library=shared
+
+# Cross checking generated files
+rm -rf include_headers_test.txt executables_test.txt lib_headers_test.txt
+cat &lt;&lt;EOT &gt;&gt; include_headers_test.txt
+libplatform
+v8-debug.h
+v8-platform.h
+v8-profiler.h
+v8-testing.h
+v8-util.h
+v8.h
+v8config.h
+v8stdint.h
+EOT
+
+cat &lt;&lt;EOT &gt;&gt; executables_test.txt
+libicui18n.so
+libicuuc.so
+libv8.so
+EOT
+
+cat &lt;&lt;EOT &gt;&gt; lib_headers_test.txt
+libicudata.a
+libicui18n.a
+libicui18n.so
+libicuuc.a
+libicuuc.so
+EOT
+
+ls include/ | tee include_headers.txt
+ls out/s390x.release/lib.target/ | tee executables.txt
+ls out/s390x.release/obj.target/third_party/icu | tee lib_headers.txt
+
+result_include_headers=`diff include_headers.txt include_headers_test.txt`
+ 
+if [ -z &quot;$result_include_headers&quot; ] ; then
+  echo &quot;include_headers are generated&quot;
+else
+  exit 1
+fi
+
+result_executables=`diff executables.txt executables_test.txt`
+ 
+if [ -z &quot;$result_executables&quot; ] ; then
+  echo &quot;executables are generated&quot;
+else
+  exit 1
+fi
+result_lib_headers=`diff lib_headers.txt lib_headers_test.txt`
+ 
+if [ -z &quot;$result_lib_headers&quot; ] ; then
+  echo &quot;lib_headers are generated&quot;
+else
+  exit 1
+fi
+
+# Install V8 header files
+cd $JENKINS_HOME/v8z/
+sudo cp -vR include/* /usr/include/
+sudo chmod -v 644 /usr/include/v8*h /usr/include/libplatform/libplatform.h
+
+sudo cp -v out/s390x.release/lib.target/lib*.so /usr/local/lib64/ 
+sudo chmod -v 755 /usr/local/lib64/libv8.so
+sudo cp -v out/s390x.release/obj.target/tools/gyp/lib*.a /usr/local/lib64/
+
+sudo cp -v out/s390x.release/obj.target/third_party/icu/lib*.a /usr/local/lib64/
+sudo chmod -v 755 /usr/local/lib64/libicu*.so
+sudo chmod -v 644 /usr/local/lib64/libv8*.a /usr/local/lib64/libicu*.a
+
+sudo ldconfig -v
+
+# Verify version of shell
+$JENKINS_HOME/v8z/out/s390x.release/shell</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@salamani</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

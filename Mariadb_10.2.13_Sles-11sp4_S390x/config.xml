@@ -1,0 +1,173 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles11-sp4</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 5</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>###Install build dependencies
+sudo zypper up -y
+sudo zypper install -y git wget tar cmake net-tools gcc gcc-c++ make ncurses-devel boost-devel check-devel libopenssl-devel bison scons glibc-locale gcc5 gcc5-c++ gawk wget-openssl1 curl-openssl1
+
+###alternatives###
+sudo /usr/sbin/update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.3 50
+sudo /usr/sbin/update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 20
+sudo /usr/sbin/update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.3 50
+sudo /usr/sbin/update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 20
+
+
+##Change the directory to server
+SOURCE_ROOT=`pwd`
+
+############CMAKE###########
+cd $SOURCE_ROOT
+wget http://www.cmake.org/files/v3.3/cmake-3.3.0.tar.gz
+tar xzf cmake-3.3.0.tar.gz
+cd cmake-3.3.0
+./bootstrap --prefix=/usr
+gmake
+sudo gmake install
+
+##########OPENSSL###############
+cd $SOURCE_ROOT
+git clone git://github.com/openssl/openssl.git
+cd openssl
+git checkout OpenSSL_1_0_2l
+./config --prefix=/usr --openssldir=/usr/local/openssl shared
+make
+sudo make install
+
+
+cd $SOURCE_ROOT
+wget https://github.com/MariaDB/server/archive/mariadb-10.2.13.tar.gz --no-check-certificate
+tar xzf mariadb-10.2.13
+cd server-mariadb-10.2.13
+#added
+cd $SOURCE_ROOT
+git clone git://github.com/MariaDB/mariadb-connector-c.git
+cd mariadb-connector-c 
+git checkout v3.0.2
+cd ..
+cp -r mariadb-connector-c/* server-mariadb-10.2.13/libmariadb/
+
+sed -i &apos;231d&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_STATUS_IN_TRANS_READONLY       8192&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_SESSION_STATE_CHANGED      16384&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_STATUS_ANSI_QUOTES        32768&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+
+##Build, configure, install and execute test cases
+cd $SOURCE_ROOT/server-mariadb-10.2.13
+BUILD/autorun.sh
+./configure 
+make 
+sudo make install
+
+
+sudo /usr/sbin/useradd mysql
+sudo /usr/sbin/groupadd mysql
+cd /usr/local/mysql		
+sudo chmod -R o+rwx .
+ 
+sudo scripts/mysql_install_db --user=mysql
+sleep 20s 
+sudo cp support-files/mysql.server /etc/init.d/mysql
+
+sudo /usr/local/mysql/bin/mysqld_safe --user=mysql &amp;
+sleep 30s
+sudo bin/mysqladmin version --user=mysql
+
+cd $SOURCE_ROOT/server-mariadb-10.2.13
+make test
+
+###set gcc to gcc5 and g++ to gcc5++
+echo 2 | sudo /usr/sbin/update-alternatives --config gcc
+echo 2 | sudo /usr/sbin/update-alternatives --config g++
+
+###############JEMALLOC#########
+cd $SOURCE_ROOT
+wget -O jemalloc https://github.com/jemalloc/jemalloc/releases/download/3.6.0/jemalloc-3.6.0.tar.bz2 --no-check-certificate
+tar xjf jemalloc
+cd jemalloc-3.6.0 
+./configure &amp;&amp; make &amp;&amp; sudo make install &amp;&amp; sudo /sbin/ldconfig -v
+
+####Scons###############
+cd $SOURCE_ROOT
+wget http://downloads.sourceforge.net/project/scons/scons/2.3.4/scons-2.3.4-1.noarch.rpm --no-check-certificate
+sudo rpm -Uvh scons-2.3.4-1.noarch.rpm
+
+
+####Galera build########
+cd $SOURCE_ROOT
+rm -rf galera
+git clone git://github.com/codership/galera.git
+cd galera
+git checkout release_25.3.21
+scons strict_build_flags=0 --config=force
+
+sudo cp garb/garbd /usr/local/sbin/
+sudo cp libgalera_smm.so /usr/local/lib64/
+sudo /sbin/ldconfig -v</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @narang</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

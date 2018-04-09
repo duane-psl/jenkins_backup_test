@@ -1,0 +1,172 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_ubuntu16.04_root-node</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 15 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>export GOPATH=`pwd`
+
+#Install the dependencies
+apt-get update -y
+apt-get install -y python openjdk-8-jdk build-essential gcc tar wget git make unzip
+
+java -version
+ 
+cat /etc/os*
+whoami
+#Install Nodejs v4+
+cd $GOPATH
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/nodejs/8.9.4.0/linux/s390x/ibm-8.9.4.0-node-v8.9.4-linux-s390x.bin
+chmod +x ibm-8.9.4.0-node-v8.9.4-linux-s390x.bin
+echo -e &quot;LICENSE_ACCEPTED=TRUE\nUSER_INSTALL_DIR=/root/ibm/node\n-fileOverwrite_/root/ibm/node/_node_installation/uninstall.lax=Yes&quot; &gt; installer.properties
+cat installer.properties
+./ibm-8.9.4.0-node-v8.9.4-linux-s390x.bin -f installer.properties -i silent
+
+
+export PATH=$PATH:/root/ibm/node/bin
+node -v
+
+
+#Install Golang
+cd $GOPATH
+apt-get install -y wget tar gcc
+wget https://storage.googleapis.com/golang/go1.9.2.linux-s390x.tar.gz
+chmod ugo+r go1.9.2.linux-s390x.tar.gz
+sudo tar -C /usr/local -xzf go1.9.2.linux-s390x.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+go version
+
+#Get the Grafana Soure code and build Grafana backend
+cd $GOPATH
+mkdir -p $GOPATH/src/github.com/grafana
+cd $GOPATH/src/github.com/grafana
+git clone -q https://github.com/grafana/grafana.git
+cd grafana
+git checkout v4.6.3
+
+cd ./vendor/github.com/klauspost/compress/gzip
+cp gunzip.go gunzip.go.copy
+cp gzip.go gzip.go.copy
+
+
+#Edit the file vendor/github.com/klauspost/compress/gzip/gunzip.go
+sed -i &apos;17d &apos; gunzip.go
+sed -i &quot;17 i \\\t\&quot;hash/crc32\&quot;&quot; gunzip.go
+
+#Edit the file vendor/github.com/klauspost/compress/gzip/gzip.go
+sed -i &apos;14d &apos; gzip.go
+sed -i &quot;14 i \\\t\&quot;hash/crc32\&quot;&quot; gzip.go
+
+git diff 
+cd $GOPATH/src/github.com/grafana/grafana
+make deps-go
+make build-go
+
+#Build and Install Grafana frontend assets
+#Install phantomjs
+apt-get install -y phantomjs
+export QT_QPA_PLATFORM=offscreen
+
+#Install yarn
+cd /opt
+wget https://github.com/yarnpkg/yarn/releases/download/v1.3.2/yarn-v1.3.2.tar.gz
+tar zvxf yarn-v1.3.2.tar.gz
+export PATH=$PATH:/opt/yarn-v1.3.2/bin
+
+#Install grunt
+cd $GOPATH/src/github.com/grafana/grafana
+npm install grunt
+
+#Build frontend
+make deps-js
+make build-js
+
+
+apt-get install -y curl
+./bin/grafana-server &amp;
+sleep 20s
+curl http://localhost:3000/login
+sleep 20s
+
+ pgrep -d&quot; &quot; -f &quot;grafana-server&quot; | xargs kill || true 
+ sleep 20s
+#Testing
+#Test backend
+make test-go
+
+#Test frontend
+make test-js 2&gt;&amp;1 | tee testlogs &amp;&amp; grep &apos;Warning: Task &quot;karma:test&quot; &apos; testlogs &gt; generated_failures
+cut -d &apos; &apos; -f1-3 generated_failures &gt; generated_failures1
+echo &apos; Warning: Task &quot;karma:test&quot; &apos; &gt; expected_failures
+diff -u  --ignore-all-space generated_failures1 expected_failures
+
+$GOPATH/src/github.com/grafana/grafana/bin/grafana-server -v
+
+$GOPATH/src/github.com/grafana/grafana/bin/grafana-cli -v
+
+
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build , @duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

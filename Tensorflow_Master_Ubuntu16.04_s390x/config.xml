@@ -1,0 +1,116 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>tensorflow_ub16.04_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 0</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 0</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>set -e
+set -x
+HOME=$PWD
+
+rm -rf tensorflow
+
+export PATH=/home/test/output/:$PATH
+
+which bazel
+echo $PATH
+
+git clone https://github.com/tensorflow/tensorflow/
+cd tensorflow
+
+
+# Configure.
+#export TEST_TMPDIR=/data/TF_tmp
+export TF_NEED_GCP=0
+export TF_NEED_HDFS=0
+export TF_NEED_CUDA=0
+export TF_NEED_MKL=0
+export TF_NEED_OPENCL=0
+export TF_NEED_VERBS=0
+export TF_NEED_S3=0
+
+yes &quot;&quot; | ./configure
+
+
+# Build
+bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+
+  
+# Run bazel test command. Double test timeouts to avoid flakes.
+bazel --host_jvm_args=&quot;-Xms512m&quot; --host_jvm_args=&quot;-Xmx1024m&quot; test \
+    --test_tag_filters=-gpu,-benchmark-test -k \
+  --test_timeout 300,450,1200,3600 --build_tests_only \
+  --test_output=errors -- \
+  //tensorflow/... -//tensorflow/compiler/... -//tensorflow/core/platform/s3/... -//tensorflow/core/platform/cloud/... -//tensorflow/contrib/lite/... -//tensorflow/contrib/cloud/... || true 
+
+#sudo bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_wheel
+
+#ls /tmp/tensorflow/
+#sudo pip install /tmp/tensorflow_wheel/tensorflow-1.6.0-cp27-cp27mu-linux_s390x.whl
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+if((it.getComputer().countBusy()) ==1)
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nthorat</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

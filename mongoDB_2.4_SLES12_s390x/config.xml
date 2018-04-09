@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12-8192MB</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>true</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo zypper install -y git make git-svn gcc-c++ wget
+#-----------building v8-------------
+cd /home/test/
+mkdir source_root
+cd source_root
+git clone https://github.com/ibmruntimes/v8z
+cd v8z
+git checkout 3.14-s390
+make dependencies
+make s390x -j4
+make s390x -j4 library=shared
+sudo cp -vR include/* /usr/include/
+sudo cp -v out/s390x.release/lib.target/lib*.so /usr/local/lib64/
+
+
+sudo cp -v out/s390x.release/obj.target/tools/gyp/lib*.a /usr/local/lib64/
+if [ -d out/s390x.release/obj.target/third_party/icu ] ; then \
+    sudo cp -v out/s390x.release/obj.target/third_party/icu/lib*.a /usr/local/lib64/ ; fi
+
+sudo ldconfig -v
+#-------------------------------
+
+#------building mongodb----------
+cd /home/test/source_root
+wget http://sourceforge.net/projects/scons/files/scons/2.3.1/scons-2.3.1-1.noarch.rpm
+sudo rpm -i scons-2.3.1-1.noarch.rpm
+
+git clone https://github.com/ibmsoe/mongo mongo
+cd mongo
+
+git fetch
+git checkout r2.4.9-ppc
+cp /home/test/source_root/v8z/include/*.h /home/test/source_root/mongo/src/
+scons --64 --usev8 --use-system-v8 all
+
+#cd /home/test/source_root/
+#git clone git://github.com/mongodb/mongo-python-driver.git pymongo
+#cd pymongo
+#git checkout v2.6
+#sudo python setup.py install
+#cd ../mongo
+#python buildscripts/smoke.py --mode=files jstests/core/all.js
+#echo &apos;#!/bin/bash&apos; &gt; run_smoke_tests.sh
+#echo &apos;mkdir -p smoke_logs&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;find jstests/core -name &quot;*.js&quot; | sort | \&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;while read -r line ; do&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;    dname=`dirname $line`&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;    fname=`basename $line`&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;    echo `date` &quot;$line&quot; &gt;&gt; smoke_logs/smoke_list.log&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;    rm -r /data/db/*&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;    mkdir -p smoke_logs/$dname&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;    python buildscripts/smoke.py --mode=files $dname/$fname &amp;&gt; smoke_logs/$dname/$fname.log&apos; &gt;&gt; run_smoke_tests.sh
+#echo &apos;done&apos; &gt;&gt; run_smoke_tests.sh
+#chmod +x run_smoke_tests.sh
+#./run_smoke_tests.sh &amp;
+
+#cd /home/test/source_root/mongo
+#sudo python buildscripts/smoke.py --mode=files jstests/all.js
+#echo &apos;find jstests -maxdepth 1 -name &quot;*.js&quot; | grep -v &quot;jstests/_&quot; | sort | \&apos; &gt;&gt; run_smoke_tests.sh
+
+        
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

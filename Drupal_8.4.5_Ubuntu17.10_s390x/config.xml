@@ -1,0 +1,161 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub17.10_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 15 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;drupal&quot;
+published_version=&quot;8.4.5&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+#-----------------------------------------------------------------------------------------
+export work_dir=`pwd`
+
+#Install build dependencies
+sudo apt-get update -y
+export DEBIAN_FRONTEND=noninteractive
+#sudo sed -i &quot;s/^exit 101$/exit 0/&quot; /usr/sbin/policy-rc.d
+sudo -E apt-get install -y mysql-server
+sudo apt-get -y install apache2 composer curl libapache2-mod-php7.1 php7.1 php7.1-xml php7.1-gd php7.1-ldap php7.1-mysql php7.1-bcmath php7.1-mbstring tar unzip wget
+
+#Update Apache configuration
+sudo chmod 777 /etc/apache2/apache2.conf
+
+sudo sed -i &apos;166s/AllowOverride None/AllowOverride All/&apos; /etc/apache2/apache2.conf
+
+sudo echo -e &quot;ServerName localhost&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;AddType application/x-httpd-php .php&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot; DirectoryIndex index.php &quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt; /etc/apache2/apache2.conf
+
+#Enable Apache rewrite module
+sudo a2enmod rewrite
+
+
+#Initialize MySQL server
+
+sudo /usr/sbin/mysqld --initialize --user=mysql --datadir=/var/lib/mysql/data 
+sleep 60s
+
+sudo mkdir -p /var/run/mysqld
+sudo chown mysql:mysql /var/run/mysqld
+#sudo chmod 777 -R /var/run/mysqld
+
+#Create database and grant privileges to &apos;drupal&apos; user
+sudo /usr/bin/mysqld_safe --user=mysql &amp;
+sleep 90s
+
+
+sudo /usr/bin/mysql -e &quot;create database drupal&quot; 
+sudo /usr/bin/mysql -e &quot;create user &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos;&quot; 
+sudo /usr/bin/mysql -e &quot;grant all privileges on drupal.* to &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos; with GRANT OPTION&quot;
+
+
+
+#Install Drupal
+cd $work_dir
+wget https://ftp.drupal.org/files/projects/drupal-8.4.5.tar.gz
+tar -zxvf drupal-8.4.5.tar.gz
+sudo mkdir -p /var/www/html/Drupal 
+cd drupal-8.4.5
+sudo mv * .htaccess .csslintrc .editorconfig .eslintignore .eslintrc.json .gitattributes /var/www/html/Drupal
+cd /var/www/html/Drupal
+composer install
+
+
+#Set Permissions
+sudo mkdir sites/default/files 
+sudo chmod a+w sites/default/files 
+sudo chmod a+w sites/default 
+sudo cp sites/default/default.settings.php sites/default/settings.php 
+sudo chmod a+w sites/default/settings.php
+
+sudo cp /home/test/work/Drupal_8.4.3/settings.php sites/default/settings.php
+
+#Start Apache Http Server
+sudo service apache2 start
+
+cd
+mysql -u drupal -pdrupal drupal &lt; /home/test/work/Drupal_8.4.3/drupal.sql
+sleep 60s
+wget -q  http://127.0.0.1:80/Drupal -O - | grep Welcome</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room> #loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

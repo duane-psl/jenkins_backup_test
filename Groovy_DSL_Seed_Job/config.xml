@@ -1,0 +1,55 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>master</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <javaposse.jobdsl.plugin.ExecuteDslScripts plugin="job-dsl@1.44">
+      <scriptText>freeStyleJob(&apos;apply-dsl&apos;) {
+	description(&quot;&quot;&quot;&lt;a href=&quot;https://github.com/tianon/jenkins-groovy/tree/master/dsl&quot; target=&quot;_blank&quot;&gt;https://github.com/tianon/jenkins-groovy/tree/master/dsl&lt;/a&gt;&quot;&quot;&quot;)
+	logRotator { numToKeep(5) }
+	label(&apos;master&apos;) // running this job directly on the master is an order of magnitude faster than running it on a node (probably due to the fact that the DSL scripts themselves run on the master regardless)
+	scm {
+		git {
+			remote { url(&apos;https://github.com/tianon/jenkins-groovy.git&apos;) }
+			branches(&apos;*/master&apos;)
+			clean()
+		}
+	}
+	triggers {
+		//scm(&apos;H/30 * * * *&apos;)
+	}
+	wrappers { colorizeOutput() }
+	steps {
+		dsl {
+			external(&apos;dsl/docker-multiarch/images/drupal.groovy&apos;)
+			removeAction(&apos;DELETE&apos;)
+			removeViewAction(&apos;DELETE&apos;)
+			additionalClasspath(&apos;.&apos;)
+		}
+	}
+}</scriptText>
+      <usingScriptText>true</usingScriptText>
+      <ignoreExisting>false</ignoreExisting>
+      <removedJobAction>IGNORE</removedJobAction>
+      <removedViewAction>IGNORE</removedViewAction>
+      <lookupStrategy>JENKINS_ROOT</lookupStrategy>
+      <additionalClasspath></additionalClasspath>
+    </javaposse.jobdsl.plugin.ExecuteDslScripts>
+  </builders>
+  <publishers/>
+  <buildWrappers/>
+</project>

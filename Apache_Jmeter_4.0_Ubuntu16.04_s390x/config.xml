@@ -1,0 +1,111 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>rm -rf ./*
+
+#Install dependencies
+sudo apt-get update -y
+sudo apt-get install -y git openjdk-8-jdk ant openssl openjfx
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-s390x
+export PATH=$JAVA_HOME/bin:$PATH
+
+#Get Jmeter source and build
+git clone https://github.com/apache/jmeter.git
+cd jmeter/
+git checkout v4_0
+ant download_jars
+ant
+
+#Skip expected failures
+cp build.xml build.xml.orig
+sed -i -e &apos;s/property name=&quot;skip.batchtest_SlowCharsFeature&quot; value=&quot;false&quot;/property name=&quot;skip.batchtest_SlowCharsFeature&quot; value=&quot;true&quot;/g&apos; build.xml
+sed -i -e &apos;s/property name=&quot;skip.batchtest_TestKeepAlive&quot; value=&quot;false&quot;/property name=&quot;skip.batchtest_TestKeepAlive&quot; value=&quot;true&quot;/g&apos; build.xml
+diff -u build.xml.orig build.xml || true
+
+#Increase timeout
+cp bin/testfiles/TestSchedulerWithTimer.jmx bin/testfiles/TestSchedulerWithTimer.jmx.orig
+sed -i &apos;173d&apos; bin/testfiles/TestSchedulerWithTimer.jmx
+sed -i &apos;172along maxDurationPlusMargin = vars[&amp;quot;MaxDuration&amp;quot;].toInteger()*100000+500;&apos; bin/testfiles/TestSchedulerWithTimer.jmx
+diff -u bin/testfiles/TestSchedulerWithTimer.jmx.orig bin/testfiles/TestSchedulerWithTimer.jmx || true
+
+#Run tests
+ant test -Djava.awt.headless=true 
+
+#Comment out G1GC algorithm as it is unimplemented in OpenJDK zero
+cp bin/jmeter bin/jmeter.orig
+sed -i &apos;178d&apos; bin/jmeter
+sed -i &apos;177a# : &quot;${GC_ALGO:=&quot;-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:G1ReservePercent=20&quot;}&quot;
+&apos; bin/jmeter
+diff -u bin/jmeter.orig bin/jmeter || true
+
+#Verify
+export PATH=$PATH:`pwd`/bin/
+jmeter --version</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@abhays</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

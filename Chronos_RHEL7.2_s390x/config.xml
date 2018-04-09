@@ -1,0 +1,185 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <canRoam>true</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Prerequisites
+
+# Install apache mesos
+# Install dependencies
+sudo yum install -y make git tar wget java-1.8.0-openjdk-devel gcc gcc-c++ patch \
+libzip-devel zlib-devel libcurl-devel apr apr-util apr-devel subversion subversion-devel \
+cyrus-sasl-md5 python-devel which autoconf automake libtool
+
+# Set environment variables
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0
+export PATH=/usr/lib/jvm/java-1.8.0/bin:$PATH
+export PWD=`pwd`
+
+# Install Maven
+wget http://apache.parentingamerica.com/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz
+tar zxvf apache-maven-3.3.9-bin.tar.gz
+export PATH=$PWD/apache-maven-3.3.9/bin:$PATH
+
+# Build , configure and install Mesos
+git clone https://github.com/linux-on-ibm-z/mesos
+cd mesos/
+git checkout 0.28.x
+./bootstrap
+mkdir build
+cd build
+../configure
+make
+sudo make install
+
+cd ../../
+
+# Install Apache Zookeeper
+sudo yum install --nogpgcheck -y git tar wget ant hostname ant-junit cppunit-devel cppunit-doc hamcrest-javadoc hamcrest-demo hamcrest patch xz libtool make
+sudo yum groupinstall -y &quot;Development tools&quot;
+
+git clone https://github.com/apache/zookeeper
+cd zookeeper
+git checkout tags/release-3.4.8
+   
+ant compile_jute
+
+cd src/c
+ACLOCAL=&quot;aclocal -I /usr/share/aclocal&quot; autoreconf -if
+
+wget https://issues.apache.org/jira/secure/attachment/12570030/mt_adaptor.c.patch 
+patch src/mt_adaptor.c mt_adaptor.c.patch 
+
+./configure &amp;&amp; make &amp;&amp; sudo make install
+sudo make distclean
+
+cd ../../
+ant jar
+
+cd ..
+
+## Building and Installing Chronos
+
+# 1. Install the Dependencies
+sudo yum -y install wget tar git gcc gcc-c++ make java-1.8.0-openjdk
+
+# 2. Set environment variables for MAVEN
+export MAVEN_HOME=$PWD/apache-maven-3.3.9
+
+# 3. Build and install Node
+git clone https://github.com/andrewlow/node.git
+cd node/
+./configure
+make 
+sudo make install
+
+cd ..
+
+# 4. Start Zookeeper by doing the following:
+
+cd zookeeper
+
+echo &apos;
+# The number of milliseconds of each tick
+tickTime=2000
+# the directory where the snapshot is stored.
+# do not use /tmp for storage, /tmp here is just
+# example sakes.
+dataDir=/tmp/zookeeper
+# the port at which the clients will connect
+clientPort=2181
+&apos; &gt; conf/zoo.cfg
+
+bin/zkServer.sh start
+
+cd ..
+
+# 5. Start mesos master and slave(s)
+
+cd mesos/build
+
+nohup ./bin/mesos-master.sh --ip=127.0.0.1 --work_dir=/var/lib/mesos &amp;
+
+sleep 10
+
+# Start mesos slave.
+nohup ./bin/mesos-slave.sh --master=127.0.0.1:5050 &amp;
+
+sleep 10
+
+cd ..
+
+# 6. Build Chronos
+git clone https://github.com/mesos/chronos.git
+cd chronos
+mvn package
+sed -e &apos;/service zookeeper start/ s/^/#/&apos; -i bin/start-chronos.bash
+sleep10
+nohup bin/start-chronos.bash --http_port 4400 &amp;
+sleep 30
+wget localhost:4400</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <hudson.plugins.emailext.ExtendedEmailPublisher plugin="email-ext@2.53">
+      <recipientList>$DEFAULT_RECIPIENTS</recipientList>
+      <configuredTriggers>
+        <hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+          <email>
+            <subject>$PROJECT_DEFAULT_SUBJECT</subject>
+            <body>$PROJECT_DEFAULT_CONTENT</body>
+            <recipientProviders>
+              <hudson.plugins.emailext.plugins.recipients.ListRecipientProvider/>
+            </recipientProviders>
+            <attachmentsPattern></attachmentsPattern>
+            <attachBuildLog>false</attachBuildLog>
+            <compressBuildLog>false</compressBuildLog>
+            <replyTo>$PROJECT_DEFAULT_REPLYTO</replyTo>
+            <contentType>project</contentType>
+          </email>
+        </hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+      </configuredTriggers>
+      <contentType>default</contentType>
+      <defaultSubject>$DEFAULT_SUBJECT</defaultSubject>
+      <defaultContent>$DEFAULT_CONTENT</defaultContent>
+      <attachmentsPattern></attachmentsPattern>
+      <presendScript>$DEFAULT_PRESEND_SCRIPT</presendScript>
+      <postsendScript></postsendScript>
+      <attachBuildLog>true</attachBuildLog>
+      <compressBuildLog>false</compressBuildLog>
+      <replyTo>$DEFAULT_REPLYTO</replyTo>
+      <saveOutput>false</saveOutput>
+      <disabled>false</disabled>
+    </hudson.plugins.emailext.ExtendedEmailPublisher>
+  </publishers>
+  <buildWrappers/>
+</project>

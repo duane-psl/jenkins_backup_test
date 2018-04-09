@@ -1,0 +1,152 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+    <com.cloudbees.jenkins.GitHubPushTrigger plugin="github@1.25.0">
+      <spec></spec>
+    </com.cloudbees.jenkins.GitHubPushTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 5</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+#Set the below parameters manually
+package_name=&quot;mariadb&quot;
+published_version=&quot;10.2.13&quot;
+
+cat /etc/redhat-release
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+#./etc/os-release
+#if [ $ID == &quot;rhel&quot; ]; then
+#	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+#elif [ $ID == &quot;sles&quot; ]; then
+#	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+#elif [ $ID == &quot;ubuntu&quot; ]; then
+#	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+#fi
+
+###Install build dependencies
+SOURCE_ROOT=`pwd`
+source /home/test/.bashrc
+sudo yum install -y git wget cmake gcc gcc-c++ make ncurses-devel bison tar boost-devel check-devel openssl-devel perl-CPAN &apos;perl(Test::More)&apos;
+
+##Change the directory to server
+wget https://github.com/MariaDB/server/archive/mariadb-10.2.13.tar.gz
+tar xzf mariadb-10.2.13.tar.gz
+cd server-mariadb-10.2.13
+
+cd $SOURCE_ROOT
+git clone https://github.com/MariaDB/mariadb-connector-c.git
+cd mariadb-connector-c
+git checkout v3.0.2
+cd ..
+cp -r mariadb-connector-c/* server-mariadb-10.2.13/libmariadb/
+
+sed -i &apos;231d&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_STATUS_IN_TRANS_READONLY       8192&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_SESSION_STATE_CHANGED      16384&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+sed -i &apos;231 a\#define SERVER_STATUS_ANSI_QUOTES        32768&apos; server-mariadb-10.2.13/libmariadb/include/mariadb_com.h
+
+
+##Build, configure, install and execute test cases
+cd $SOURCE_ROOT/server-mariadb-10.2.13
+BUILD/autorun.sh 
+./configure
+
+make 
+sudo make install 
+
+sudo useradd mysql
+#sudo groupadd mysql
+cd /usr/local/mysql  
+sudo chmod -R o+rwx .
+
+
+# Start Mysql server 
+sudo scripts/mysql_install_db --user=mysql
+sleep 20s
+sudo cp support-files/mysql.server /etc/init.d/mysql
+sudo /usr/local/mysql/bin/mysqld_safe --user=mysql &amp;
+sleep 30s
+sudo bin/mysqladmin version --user=mysql
+
+cd $SOURCE_ROOT/server-mariadb-10.2.13
+make test 
+
+
+#Building the Galera wsrep provider
+
+cd $SOURCE_ROOT
+wget http://downloads.sourceforge.net/project/scons/scons/2.3.4/scons-2.3.4-1.noarch.rpm
+sudo rpm -i scons-2.3.4-1.noarch.rpm
+git clone https://github.com/codership/galera.git
+cd galera
+git checkout release_25.3.21
+scons strict_build_flags=0 --config=force
+sudo cp garb/garbd /usr/local/sbin/        
+sudo cp libgalera_smm.so /usr/local/lib64/
+sudo /sbin/ldconfig -v</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @narang</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

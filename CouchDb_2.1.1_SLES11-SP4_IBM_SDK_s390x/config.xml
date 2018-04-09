@@ -1,0 +1,176 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>Jenkin Job for Couch DB </description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles11_ibm-8</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Check if published version is already present in repo 
+package_name=&quot;couchdb&quot;
+published_version=&quot;2.1.1&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	sudo apt-get update
+	available_version=$(sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Available version: $available_version&quot;
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+#==============================================================================================#
+export JAVA_HOME=/opt/ibm/java-s390x-80 
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+export CouchDb_home=$(pwd)
+sudo zypper up -y
+# Build Erlang
+sudo zypper install -y wget tar make perl gcc gcc-c++ libopenssl-devel libssh-devel ncurses-devel unixODBC unixODBC-devel wget-openssl1 curl-openssl1
+git config --global url.&quot;git://github.com/&quot;.insteadOf &quot;https://github.com/&quot;
+wget http://www.erlang.org/download/otp_src_20.0.tar.gz
+tar zxf otp_src_20.0.tar.gz
+cd otp_src_20.0
+export ERL_TOP=$(pwd)
+./configure --prefix=/usr
+make
+sudo make install
+
+# Dependencies
+sudo zypper install -y libicu-devel libcurl4 libcurl-devel git wget autoconf213 zip fontconfig-devel pkg-config  yasm tar make gtk2-devel  dbus-1-devel dbus-1-glib-devel libopenssl-devel libssh-devel ncurses-devel unixODBC unixODBC-devel libtool pkg-config curl automake libidl-devel libnotify-devel fontconfig libasound2 python wget perl perl-base
+
+
+sudo zypper install -y gcc48-c++
+sudo rm -rf /usr/bin/gcc /usr/bin/cc /usr/bin/g++ /usr/bin/c++
+sudo ln -s /usr/bin/gcc-4.8 /usr/bin/gcc
+sudo ln -s /usr/bin/gcc-4.8 /usr/bin/cc
+sudo ln -s /usr/bin/g++-4.8 /usr/bin/g++
+sudo ln -s /usr/bin/g++-4.8 /usr/bin/c++
+
+
+cd $CouchDb_home
+wget http://ftp.mozilla.org/pub/mozilla.org/js/js185-1.0.0.tar.gz
+tar zxf js185-1.0.0.tar.gz 
+
+sed -i &apos;309d&apos; js-1.8.5/js/src/jsval.h
+sed -i &quot;313i jsuword        asWord;&quot; js-1.8.5/js/src/jsval.h
+sed -i &quot;323i uint32         padding;&quot; js-1.8.5/js/src/jsval.h
+sed -i &quot;347i uint32         padding;&quot; js-1.8.5/js/src/jsval.h
+sed -i &quot;356i jsuword        asWord;&quot; js-1.8.5/js/src/jsval.h
+
+sed -i &apos;294d&apos; js-1.8.5/js/src/jsvalue.h
+sed -i &apos;731d&apos; js-1.8.5/js/src/jsvalue.h
+sed -i &apos;731i #if JS_BITS_PER_WORD == 32 \n\t return reinterpret_cast&lt;const jsuword *&gt;(&amp;data.s.payload.word);\n\t#elif JS_BITS_PER_WORD == 64 \n\t return reinterpret_cast&lt;const jsuword *&gt;(&amp;data.asBits);\n\t#endif&apos;  js-1.8.5/js/src/jsvalue.h
+
+sed -i &apos;385d&apos; js-1.8.5/js/src/Makefile.in
+sed -i &apos;385i ifeq (,$(filter arm %86 x86_64,$(TARGET_CPU)))&apos; js-1.8.5/js/src/Makefile.in
+
+cd js-1.8.5/js/src
+autoconf-2.13
+mkdir -p build_OPT.OBJ
+cd build_OPT.OBJ
+../configure --prefix=/usr &amp;&amp; make &amp;&amp; sudo make install
+
+
+# Build and copy rebar
+
+cd $CouchDb_home
+sudo rm -rf rebar
+git clone https://github.com/rebar/rebar.git
+cd rebar &amp;&amp; ./bootstrap
+sudo cp rebar /usr/local/bin/
+echo &quot;Rebar Installation Completed&quot;
+
+cd $CouchDb_home
+sudo rm -rf couchdb
+git clone https://github.com/apache/couchdb.git
+cd couchdb
+git checkout 2.1.1
+
+./configure -c --disable-docs --disable-fauxton
+export LD_LIBRARY_PATH=/usr/lib
+make  
+
+
+sed -i -e &apos;s|-define(SNAPPY, &lt;&lt;1,49,64,131,104,1,108,0,0,0,5,104,2,100,0,|-define(SNAPPY, &lt;&lt;1,49,60,131,104,1,108,0,0,0,5,104,2,100,0,|g&apos; src/couch/test/couch_compress_tests.erl
+sed -i -e &apos;s|1,97,97,1,104,1,8,8,98,97,2,5,8,8,99,97,3,5,8,44,100,97,|1,97,97,1,5,8,8,98,97,2,5,8,8,99,97,3,5,8,44,100,97,|g&apos; src/couch/test/couch_compress_tests.erl
+
+# Tests are failing intermittently due to load on vm.
+# make check
+
+# Start the server
+sudo dev/run &amp;
+sleep 300s
+
+# Verify the output of CouchDB server 
+curl http://127.0.0.1:15984/ 
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nthorat</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

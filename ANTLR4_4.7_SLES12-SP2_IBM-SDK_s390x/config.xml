@@ -1,0 +1,162 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-SP2_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 17 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 17 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;antlr4&quot;
+published_version=&quot;4.7&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+sudo zypper up -y
+sudo zypper install -y tar python wget git java-1_8_0-ibm-devel ant autoconf automake libtool which gcc-c++ make ncurses patch timezone
+
+rm -rf srcrt
+mkdir srcrt
+cd srcrt
+
+#build mono 4.8.0
+git clone git://github.com/mono/mono
+cd mono
+git checkout mono-4.8.0.524
+./autogen.sh --disable-nls
+make get-monolite-latest
+make 
+sudo make install
+
+# install Maven
+cd ..
+wget https://archive.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz
+tar -xvzf apache-maven-3.3.9-bin.tar.gz
+export PATH=$PWD/apache-maven-3.3.9/bin::$PATH
+
+# install nodejs
+wget https://nodejs.org/dist/v6.11.3/node-v6.11.3-linux-s390x.tar.xz
+tar xf node-v6.11.3-linux-s390x.tar.xz
+export PATH=$PWD/node-v6.11.3-linux-s390x/bin:$PATH
+
+# Build and install Python3
+sudo zypper install -y gcc gcc-c++ make ncurses patch wget tar zlib-devel
+wget https://www.python.org/ftp/python/3.5.3/Python-3.5.3.tar.xz
+tar -xvf Python-3.5.3.tar.xz
+cd Python-3.5.3
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+sudo make install
+
+#Build and install Python2.7
+wget https://www.python.org/ftp/python/2.7.14/Python-2.7.14.tar.xz
+tar -xvf Python-2.7.14.tar.xz
+cd Python-2.7.14
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+sudo make install
+
+# install GO
+cd ..
+wget https://storage.googleapis.com/golang/go1.9.2.linux-s390x.tar.gz
+tar -xzf go1.9.2.linux-s390x.tar.gz
+export PATH=$PATH:$PWD/go/bin
+export GOROOT=$PWD/go
+export CC=gcc
+
+# Set env variables
+export JAVA_HOME=/usr/lib64/jvm/java
+
+# Building and installing ANTLR4
+git clone git://github.com/antlr/antlr4.git
+cd antlr4
+git checkout 4.7
+export MAVEN_OPTS=&quot;-Xmx1G&quot;
+
+#change in code
+sed -i &apos;/Array.Reverse/i \
+if(BitConverter.IsLittleEndian)&apos; runtime/CSharp/runtime/CSharp/Antlr4.Runtime/Atn/ATNDeserializer.cs
+sed -i &apos;s/20000/200000/&apos; tool-testsuite/test/org/antlr/v4/test/tool/TestPerformance.java
+
+mvn install</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@aditya.pawaskar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

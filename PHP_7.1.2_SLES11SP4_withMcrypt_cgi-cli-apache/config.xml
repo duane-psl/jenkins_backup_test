@@ -1,0 +1,315 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl11-SP4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>export WORK_DIR=`pwd`
+export PATH=/sbin:$PATH
+cd $WORK_DIR
+
+sudo zypper update -y
+sudo zypper install -y autoconf automake bzip2 cyrus-sasl-devel flex freetype2-devel gawk gcc gcc-c++ gdbm-devel git \
+                       gmp-devel groff libbz2-devel libdb-4_5-devel libjpeg-devel libpng-devel libxml2-devel libxslt-devel make \
+                       pkg-config pcre-devel readline-devel tar unixODBC-devel vim wget xorg-x11-libXpm-devel xz zlib-devel network-autoconfig sysconfig wget-openssl1
+                                           
+
+
+cd $WORK_DIR
+wget http://ftpmirror.gnu.org/libtool/libtool-2.4.6.tar.gz
+ tar -xvf libtool-2.4.6.tar.gz
+ cd libtool-2.4.6
+ ./configure --prefix=/usr/local &amp;&amp; make
+ sudo make install
+
+cd $WORK_DIR
+wget http://ftp.gnu.org/gnu/bison/bison-2.7.1.tar.gz
+ tar zxf bison-2.7.1.tar.gz
+ cd bison-2.7.1
+ ./configure --prefix=/usr/local &amp;&amp; make
+ sudo make install
+
+
+cd $WORK_DIR
+wget https://cmake.org/files/v3.7/cmake-3.7.2.tar.gz
+tar xzf cmake-3.7.2.tar.gz
+cd cmake-3.7.2
+./configure --prefix=/usr/local
+make
+sudo make install
+export PATH=/usr/local/cmake/bin:$PATH 
+cmake --version
+
+cd $WORK_DIR 
+wget https://www.openssl.org/source/old/fips/openssl-fips-2.0.13.tar.gz
+ tar zxf openssl-fips-2.0.13.tar.gz
+ cd openssl-fips-2.0.13
+ ./config no-asm &amp;&amp; make
+ sudo make install
+ 
+cd $WORK_DIR  
+wget https://www.openssl.org/source/old/1.0.2/openssl-1.0.2j.tar.gz
+ tar zxf openssl-1.0.2j.tar.gz
+ cd openssl-1.0.2j
+ ./config fips --prefix=/usr/local --openssldir=/usr/local/etc shared zlib
+ make depend &amp;&amp; make
+ sudo make install
+
+cd $WORK_DIR 
+wget http://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-2.4.41.tgz
+ tar zxf openldap-2.4.41.tgz
+ cd openldap-2.4.41
+ ./configure --prefix=/usr/local --sysconfdir=/usr/local/etc --disable-slapd
+ make depend &amp;&amp; make
+ sudo make install
+ 
+cd $WORK_DIR 
+git clone git://github.com/curl/curl.git
+cd curl
+git checkout curl-7_52_1
+./buildconf         
+./configure --prefix=/usr/local --with-ssl
+make
+sudo make install
+ 
+cd $WORK_DIR 
+ wget https://sourceforge.net/projects/net-snmp/files/net-snmp/5.7.3/net-snmp-5.7.3.tar.gz --no-check-certificate
+ tar zxf net-snmp-5.7.3.tar.gz
+ cd net-snmp-5.7.3
+ ./configure --prefix=/usr/local --with-perl-modules --disable-agent --with-default-snmp-version=&quot;3&quot; --with-sys-contact=&quot;@@no.where&quot; --with-sys-location=&quot;Unknown&quot; --with-logfile=&quot;/var/log/snmpd.log&quot; --with-persistent-directory=&quot;/var/net-snmp&quot;
+ make &amp;&amp; sudo make install
+ 
+
+cd $WORK_DIR 
+wget https://ftp.postgresql.org/pub/source/v9.4.11/postgresql-9.4.11.tar.gz
+ tar zxf postgresql-9.4.11.tar.gz
+ cd postgresql-9.4.11
+ ./configure --prefix=/usr/local --enable-thread-safety
+ make &amp;&amp; sudo make install
+
+
+
+cd $WORK_DIR 
+ wget https://downloads.mysql.com/archives/get/file/mysql-5.6.38.tar.gz
+ tar zxf mysql-5.6.38.tar.gz
+ cd mysql-5.6.38
+ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DINSTALL_INCLUDEDIR=/usr/local/include/mysql -DSYSCONFDIR=/usr/local/etc/mysql -DWITHOUT_SERVER=ON -DWITH_SSL=system
+ make &amp;&amp; sudo make install
+ 
+cd $WORK_DIR
+git clone git://github.com/php/php-src.git
+cd php-src
+git checkout tags/php-7.1.2
+
+cd $WORK_DIR
+wget http://sourceforge.net/projects/mcrypt/files/Libmcrypt/2.5.8/libmcrypt-2.5.8.tar.gz
+tar -xzvf libmcrypt-2.5.8.tar.gz
+cd libmcrypt-2.5.8
+./configure
+make
+sudo make install
+
+cd $WORK_DIR
+wget http://download.icu-project.org/files/icu4c/58.2/icu4c-58_2-src.tgz
+tar zxf icu4c-58_2-src.tgz
+cd icu/source
+./configure --prefix=/usr/local &amp;&amp; make
+sudo make install
+ 
+
+
+sudo zypper install -y libexpat-devel
+cd $WORK_DIR
+ wget http://archive.apache.org/dist/httpd/httpd-2.4.25.tar.gz
+ tar zxf httpd-2.4.25.tar.gz
+ cd httpd-2.4.25/srclib
+ git clone git://github.com/apache/apr.git
+ cd apr
+ ./buildconf
+ ./configure --prefix=/usr/local
+ make &amp;&amp; sudo make install
+ cd $WORK_DIR/httpd-2.4.25
+ ./buildconf
+ ./configure --prefix=/usr/local --enable-authnz-fcgi --enable-mods-shared=&quot;all cgi&quot; --enable-mpms-shared=all --with-ssl
+ make &amp;&amp; sudo make install
+ sudo chown -R wwwrun:www /srv/www
+
+ 
+  cd  $WORK_DIR/php-src
+ ./buildconf --force
+ ./configure --datadir=/usr/local/share/php --localstatedir=/var --mandir=/usr/local/share/man --prefix=/usr/local --sysconfdir=/usr/local/etc --enable-bcmath --enable-calendar --enable-ctype --with-curl --enable-dba=shared --enable-exif --enable-filter --enable-flatfile --enable-fpm --enable-ftp --enable-gd-native-ttf --enable-inifile --enable-intl --enable-mbstring --enable-mysqlnd --enable-opcache --enable-pcntl --enable-shmop --enable-simplexml --enable-sockets --enable-sysvsem --enable-sysvshm --enable-sysvmsg --enable-xmlreader --enable-xmlwriter --enable-zend-signals --enable-zip --disable-phpdbg --disable-phpdbg-webhelper --with-apxs2=/usr/local/bin/apxs --with-bz2 --with-config-file-path=/usr/local/etc --with-config-file-scan-dir=/usr/local/etc/conf.d --with-fpm-group=www --with-fpm-user=wwwrun --with-freetype-dir --with-gd --with-gdbm --with-gettext --with-gmp --with-iconv --with-jpeg-dir --with-kerberos --with-ldap --with-ldap-sasl --with-mcrypt --with-mysql-sock=/var/lib/mysql/mysql.sock --with-mysqli=mysqlnd --with-openssl --with-pcre-regex --with-pdo-mysql=mysqlnd --with-pdo-odbc=unixODBC,/usr --with-pdo-pgsql --with-pdo-sqlite --with-pgsql --with-png-dir --with-readline --with-snmp --with-sqlite3 --with-unixODBC=/usr --with-xpm-dir=/usr --with-xsl --with-zlib --without-pcre-jit
+ 
+ make clean
+ make -j$(cat /proc/cpuinfo | grep processor | wc -l)
+ 
+ 
+make test 
+#(**NOTE:There are few test case failures which are also observed on Intel x86 platform. These failures can be ignored.)
+
+
+
+sudo make install
+sudo install -m644 php.ini-production /usr/local/etc/php.ini
+sudo sed -i &apos;s@php/includes&quot;@&amp;\ninclude_path = &quot;.:/usr/local/lib/php&quot;@&apos; /usr/local/etc/php.ini
+ 
+ php -v
+ 
+ 
+ 
+#Configure PHP
+# PHP-FPM
+#Modify the file /usr/local/etc/php-fpm.conf.default to set php-fpm pid
+sudo cp /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf.default.orig 
+sudo sed -i &apos;17d&apos; /usr/local/etc/php-fpm.conf.default
+sudo sed -i &quot;17i pid = run/php-fpm.pid&quot; /usr/local/etc/php-fpm.conf.default
+
+sudo mv /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf
+sudo mv /usr/local/etc/php-fpm.d/www.conf.default /usr/local/etc/php-fpm.d/www.conf
+
+cp $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in.orig
+sudo sed -i &apos;13d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;13i prefix=/usr/local&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+
+sudo sed -i &apos;14d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;14i exec_prefix=/usr/local&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &apos;16d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;16i php_fpm_BIN=/usr/local/sbin/php-fpm&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &apos;17d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;17i php_fpm_CONF=/usr/local/etc/php-fpm.conf&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &apos;18d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;18i php_fpm_PID=/var/run/php-fpm.pid&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+
+sudo cp $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in /etc/init.d/php-fpm
+sudo chmod 755 /etc/init.d/php-fpm
+sudo chkconfig php-fpm on
+sudo /etc/init.d/php-fpm start
+
+
+#Zend OPcache
+#Modify the file /usr/local/etc/php.ini to enable Zend OPcache:
+sudo cp /usr/local/etc/php.ini /usr/local/etc/php.ini.orig
+sudo sed -i &quot;1784i zend_extension=opcache.so&quot; /usr/local/etc/php.ini
+
+php -v
+
+if php -v | grep &quot;Zend OPcache v7.1.2&quot;; then
+  echo &quot;Done&quot;
+  
+else
+  exit 1
+fi 
+
+
+cd $WORK_DIR
+sudo chmod 766 /usr/local/conf/httpd.conf
+sudo cp /usr/local/conf/httpd.conf /usr/local/conf/httpd.conf.ori
+cd /usr/local/conf/
+  sudo sed -i &apos;149d&apos; httpd.conf
+  sudo sed -i &quot;149i #LoadModule mpm_event_module modules/mod_mpm_event.so&quot; httpd.conf
+  sudo sed -i &apos;150d&apos; httpd.conf
+  sudo sed -i &quot;150i LoadModule mpm_prefork_module modules/mod_mpm_prefork.so&quot; httpd.conf
+  sudo sed -i &quot;177i &lt;/FilesMatch&gt;&quot; httpd.conf
+  sudo sed -i &quot;177i \   \SetHandler application/x-httpd-php&quot; httpd.conf
+  sudo sed -i &quot;177i &lt;FilesMatch \.php$&gt;&quot; httpd.conf
+   
+  sudo sed -i &apos;190d&apos; httpd.conf
+  sudo sed -i &quot;190i User wwwrun&quot; httpd.conf
+  sudo sed -i &apos;191d&apos; httpd.conf
+  sudo sed -i &quot;191i Group www&quot; httpd.conf
+
+  sudo sed -i &apos;245d&apos; httpd.conf
+  
+  sudo sed -i &apos;245i DocumentRoot &quot;/srv/www/htdocs&quot;&apos; httpd.conf
+
+  sudo sed -i &apos;246d&apos; httpd.conf
+  sudo sed -i &apos;246i &lt;Directory &quot;/srv/www/htdocs&quot;&gt;&apos; httpd.conf
+  
+  
+cd $WORK_DIR
+sudo /usr/local/bin/apachectl -k start
+
+cd /srv/www/htdocs
+sudo touch testphp.php
+
+sudo chmod 766 testphp.php
+sudo echo -e &quot;&lt;?php&quot; &gt;&gt; testphp.php
+sudo echo -e &quot;phpinfo();&quot; &gt;&gt; testphp.php
+sudo echo -e &quot;?&gt;&quot; &gt;&gt; testphp.php
+  
+cat -n testphp.php
+ 
+   
+sudo /usr/local/bin/apachectl -k stop
+sudo /usr/local/bin/apachectl -k start
+sleep 3m
+
+wget -O - http://127.0.0.1:80/testphp.php
+
+
+ 
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned,@chandranana.naik</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,118 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 18 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+#Install dependencies
+sudo zypper install -y git tar bzip2 unzip python-devel make autoconf net-tools wget python-setuptools python-lxml python-ldap libxslt-devel gcc openssl libopenssl-devel libffi-devel python-xml gcc-c++ libbz2-devel
+sudo easy_install pip
+sudo pip install paramiko httplib2 passlib six patch &apos;django&lt;2.0&apos; call coverage==3.7.1 coveralls funcsigs pyzmq PyYAML pycrypto cryptography==2.0.3 msgpack-python jinja2 psutil futures tornado 
+
+export SOURCE=`pwd`
+
+#Clone the source
+git clone https://github.com/saltstack/salt
+cd salt        
+git checkout v2017.7.2
+
+#Install Salt
+cd $SOURCE
+sudo pip install -e ./salt
+
+salt --version
+salt --version | grep 2017.7.2
+
+#Configure salt
+mkdir -p $SOURCE/etc/salt/
+cp ./salt/conf/master ./salt/conf/minion $SOURCE/etc/salt/
+cd $SOURCE/etc/salt/
+
+sed -i &apos;s/#user: root/user: root/g&apos; master
+sed -i &quot;s,#root_dir: /,root_dir: $SOURCE,&quot; master
+sed -i &apos;s/#master: salt/master: localhost/g&apos; minion
+sed -i &apos;s/#user: root/user: root/g&apos; minion
+sed -i &quot;s,#root_dir: /,root_dir: $SOURCE,&quot; minion
+
+cd $SOURCE
+sudo salt-master -c ./etc/salt -d 
+sleep 30
+sudo salt-minion -c ./etc/salt -d
+sleep 60
+sudo salt-key -c ./etc/salt -L 
+sleep 20
+sudo salt-key -c ./etc/salt -A -y 
+sudo salt -c ./etc/salt &apos;*&apos; test.ping  || true
+
+ps -ef |grep salt
+
+#Testing (optional)
+#cd $SOURCE/salt
+#sudo pip install git+https://github.com/saltstack/salt-testing.git#egg=SaltTesting
+#sudo pip install -r requirements/dev_python27.txt
+#sudo ./setup.py test
+
+# **Note:** Test failures seen in the following modules can be ignore as these are not related to IBM z Systems:_ 
+#           _Module Tests, State Tests, Shell Tests, NetAPI Tests, Salt Unit Test</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room></room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

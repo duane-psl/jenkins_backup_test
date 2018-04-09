@@ -1,0 +1,116 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 3</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+export sourcedir=`pwd`
+
+sudo yum install -y git python-devel python-setuptools python-setuptools-devel \
+python-virtualenv findutils gcc openssl-devel xz curl wget tar libffi-devel libffi python-cffi \
+libffi-dev libssl-dev
+
+# Build python 
+cd $sourcedir/
+sudo yum install -y gcc-c++ make ncurses patch xz xz-devel wget tar
+wget https://www.python.org/ftp/python/2.7.14/Python-2.7.14.tar.xz
+tar -xvf Python-2.7.14.tar.xz
+cd Python-2.7.14
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+sudo make install
+
+export PATH=/usr/local/bin:$PATH
+
+#Install pip
+curl -o /tmp/ez_setup.py https://bootstrap.pypa.io/ez_setup.py
+sudo /usr/local/bin/python2.7 /tmp/ez_setup.py   
+sudo /usr/local/bin/easy_install pip  
+sudo rm -f /usr/bin/pip
+sudo ln -s /usr/local/bin/pip /usr/bin/pip		
+
+
+# Build CeilometerClient
+cd $sourcedir/
+sudo pip install pbr virtualenv cryptography 
+git clone git://github.com/openstack/python-ceilometerclient.git
+cd python-ceilometerclient
+git checkout 2.9.0
+
+sudo pip install -r requirements.txt         
+
+# Tests
+sudo pip install -r test-requirements.txt
+python setup.py test
+
+# Install
+sudo /usr/local/bin/python2.7 setup.py install
+
+ceilometer --help
+ceilometer --version</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@vitthalb</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

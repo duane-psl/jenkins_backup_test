@@ -1,0 +1,120 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12-sp3</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 23 * * 7</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>###Install the Dependencies
+sudo zypper update -y
+#sudo zypper install -y wget curl awk  java-1_8_0-ibm java-1_8_0-ibm-devel
+
+
+sudo zypper install -y tar wget curl awk
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/java/8.0.5.7/linux/s390x/ibm-java-s390x-sdk-8.0-5.7.bin
+wget https://raw.githubusercontent.com/zos-spark/scala-workbench/master/files/installer.properties.java
+tail -n +3 installer.properties.java | tee installer.properties
+cat installer.properties
+chmod +x ibm-java-s390x-sdk-8.0-5.7.bin
+sudo ./ibm-java-s390x-sdk-8.0-5.7.bin -r installer.properties
+export JAVA_HOME=/opt/ibm/java
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+export WORK_DIR=`pwd`
+
+#Install Nodejs
+cd $WORK_DIR
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/nodejs/6.12.2.0/linux/s390x/ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin
+chmod +x ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin
+echo -e &quot;LICENSE_ACCEPTED=TRUE\nUSER_INSTALL_DIR=$WORK_DIR/ibm/node\n-fileOverwrite_$WORK_DIR/ibm/node/_node_installation/uninstall.lax=Yes&quot; &gt; installer.properties
+cat installer.properties
+./ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin -f installer.properties -i silent
+export PATH=$PATH:/usr/local/sbin:$WORK_DIR/ibm/node/bin  
+node -v
+
+#Install pm2 
+npm install pm2@2.10.1 -g
+
+#Verification
+pm2 -v | grep 2.10.1
+echo &quot;var http = require(&apos;http&apos;);
+var server = http.createServer(function (request, response) {
+response.writeHead(200, {\&quot;Content-Type\&quot;: \&quot;text/plain\&quot;});
+response.end(\&quot;Welcome to pm2\n\&quot;);
+});
+server.listen(8080);
+console.log(\&quot;Server running at http://127.0.0.1:8080/\&quot;);&quot; &gt; app.js
+
+#Run the application
+pm2 start app.js
+sleep 30s
+curl http://127.0.0.1:8080/
+
+#pm2 monit
+
+pm2 stop all
+sleep 30s
+pm2 kill
+sleep 20s
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @narang</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

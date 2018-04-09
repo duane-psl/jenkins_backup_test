@@ -1,0 +1,115 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_ubuntu16.04-8192MB</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#--------building v8-------------------------
+sudo apt-get update
+sudo apt-get install -y git subversion make tar wget gcc g++ python
+cd /home/test/
+mkdir source_root
+cd source_root
+git clone https://github.com/ibmruntimes/v8z
+cd v8z
+git checkout 3.14-s390
+make dependencies
+make s390x -j4
+make s390x -j4 library=shared
+sudo cp -vR include/* /usr/include/
+sudo chmod -f 644 /usr/include/v8*h
+
+sudo cp -v out/s390x.release/lib.target/lib*.so /usr/local/lib/
+sudo chmod -f 755 /usr/local/lib/libv8.so
+sudo cp -v out/s390x.release/obj.target/tools/gyp/lib*.a /usr/local/lib/
+
+sudo chmod -f 644 /usr/local/lib/libv8*.a /usr/local/lib/libpreparser_lib.a
+sudo ldconfig -v
+
+#---mongodb 3.0-----------------
+cd /home/test/
+#wget http://downloads.sourceforge.net/project/scons/scons/2.3.4/scons-2.3.4-1.noarch.rpm&amp;ts=1473840112&amp;use_mirror=liquidtelecom
+#rpm -ivh scons-2.3.4-1.noarch.rpm
+sudo apt-get install -y scons
+
+sudo apt-get install -y software-properties-common
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+sudo apt-get -y update; sudo apt-get install -y gcc-4.8 g++-4.8
+# commented here even though the step is present in the recipe because there is no other gcc version present.If there is any other,
+# then the step will handle it.
+#sudo update-alternatives --remove-all gcc 
+#sudo update-alternatives --remove-all g++
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 20
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 20
+sudo update-alternatives --config gcc
+sudo update-alternatives --config g++
+
+
+cd /home/test/
+git clone https://github.com/linux-on-ibm-z/mongo mongo
+cd mongo
+git checkout v3.0-s390
+
+cp /home/test/source_root/v8z/include/*.h /home/test/mongo/src/
+
+sudo scons --opt --use-system-v8 --allocator=system all
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script></script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

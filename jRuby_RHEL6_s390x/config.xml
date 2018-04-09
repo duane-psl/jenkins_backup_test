@@ -1,0 +1,157 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@2.4.0">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <url>https://github.com/jruby/jruby.git</url>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>*/master</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions/>
+  </scm>
+  <assignedNode>dockercloud_rhel6</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>yum install --nogpgcheck -y wget \
+tar \
+git \
+make \
+gcc-c++ \
+ant
+
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libXi-1.7.4-3.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libX11-1.6.3-2.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libX11-common-1.6.3-2.fc23.noarch.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libXext-1.3.3-3.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/t/tzdata-java-2015e-1.fc23.noarch.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/lksctp-tools-1.0.16-4.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libXrender-0.9.9-2.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libffi-3.1-8.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/a/alsa-lib-1.0.29-2.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/g/giflib-4.1.6-13.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libjpeg-turbo-1.4.1-1.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/p/p11-kit-0.23.1-4.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/n/nss-softokn-freebl-3.19.3-2.fc24.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libstdc++-5.1.1-4.fc23.s390.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/m/make-4.0-5.1.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/c/crypto-policies-20150518-2.gitffe885e.fc23.noarch.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/o/openssl-libs-1.0.2d-1.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/p/p11-kit-trust-0.23.1-4.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/c/ca-certificates-2015.2.4-3.fc23.noarch.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/lua-5.3.0-4.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/j/javapackages-tools-4.6.0-6.fc23.noarch.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/lcms2-2.7-2.fc23.s390.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/lcms-libs-1.19-15.fc23.s390.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390/os/Packages/c/compat-libffi-3.0.10-7.fc23.s390.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/l/libXtst-1.2.2-5.fc23.s390.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/j/java-1.8.0-openjdk-headless-1.8.0.60-10.b24.fc24.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/t/ttmkfdir-3.0.9-46.fc23.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/x/xorg-x11-fonts-Type1-7.5-15.fc23.noarch.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/j/java-1.8.0-openjdk-1.8.0.60-10.b24.fc24.s390x.rpm
+wget ftp://rpmfind.net/linux/fedora-secondary/development/rawhide/s390x/os/Packages/j/java-1.8.0-openjdk-devel-1.8.0.60-10.b24.fc24.s390x.rpm
+
+rpm -ivh --nodeps --replacepkgs tzdata-java-2015e-1.fc23.noarch.rpm 
+rpm -ivh --nodeps --replacepkgs lksctp-tools-1.0.16-4.fc23.s390x.rpm
+rpm -ivh --nodeps --replacepkgs libffi-3.1-8.fc23.s390x.rpm
+rpm -ivh --nodeps --replacepkgs giflib-4.1.6-13.fc23.s390x.rpm
+rpm -ivh --nodeps --replacepkgs libstdc++-5.1.1-4.fc23.s390.rpm
+rpm -ivh --nodeps --replacepkgs crypto-policies-20150518-2.gitffe885e.fc23.noarch.rpm
+rpm -ivh --nodeps --replacepkgs lcms2-2.7-2.fc23.s390.rpm
+rpm -ivh --nodeps --replacepkgs lcms-libs-1.19-15.fc23.s390.rpm
+rpm -ivh --nodeps --replacepkgs compat-libffi-3.0.10-7.fc23.s390.rpm
+rpm -ivh --nodeps --replacepkgs libXtst-1.2.2-5.fc23.s390.rpm
+rpm -ivh --nodeps --replacepkgs java-1.8.0-openjdk-headless-1.8.0.60-10.b24.fc24.s390x.rpm
+rpm -ivh --nodeps --replacepkgs ttmkfdir-3.0.9-46.fc23.s390x.rpm
+rpm -ivh --nodeps --replacepkgs xorg-x11-fonts-Type1-7.5-15.fc23.noarch.rpm
+rpm -ivh --nodeps --replacepkgs java-1.8.0-openjdk-1.8.0.60-10.b24.fc24.s390x.rpm
+rpm -ivh --nodeps --replacepkgs java-1.8.0-openjdk-devel-1.8.0.60-10.b24.fc24.s390x.rpm
+        
+dir=`pwd`
+
+wget http://psg.mtu.edu/pub/apache/maven/maven-3/3.3.3/binaries/apache-maven-3.3.3-bin.tar.gz
+tar zxf apache-maven-3.3.3-bin.tar.gz
+        
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk
+export PATH=$PATH:$JAVA_HOME/bin
+export M2_HOME=&quot;$dir/apache-maven-3.3.3&quot;
+export PATH=$PATH:$M2_HOME/bin
+export MAVEN_OPTS=&quot;-Xmx512m -XX:MaxPermSize=1024m&quot;
+export PATH=/jruby/bin/:$PATH
+
+
+apache-maven-3.3.3/bin/mvn install
+
+ls -lrt</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.2">
+      <script plugin="script-security@1.13">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <hudson.plugins.emailext.ExtendedEmailPublisher plugin="email-ext@2.40.5">
+      <recipientList>meerabo_shah@persistent.com</recipientList>
+      <configuredTriggers>
+        <hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+          <email>
+            <recipientList></recipientList>
+            <subject>$PROJECT_DEFAULT_SUBJECT</subject>
+            <body>$PROJECT_DEFAULT_CONTENT</body>
+            <recipientProviders>
+              <hudson.plugins.emailext.plugins.recipients.ListRecipientProvider/>
+            </recipientProviders>
+            <attachmentsPattern></attachmentsPattern>
+            <attachBuildLog>false</attachBuildLog>
+            <compressBuildLog>false</compressBuildLog>
+            <replyTo>$PROJECT_DEFAULT_REPLYTO</replyTo>
+            <contentType>project</contentType>
+          </email>
+        </hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+      </configuredTriggers>
+      <contentType>default</contentType>
+      <defaultSubject>$DEFAULT_SUBJECT</defaultSubject>
+      <defaultContent>$DEFAULT_CONTENT</defaultContent>
+      <attachmentsPattern></attachmentsPattern>
+      <presendScript>$DEFAULT_PRESEND_SCRIPT</presendScript>
+      <attachBuildLog>false</attachBuildLog>
+      <compressBuildLog>false</compressBuildLog>
+      <replyTo>$DEFAULT_REPLYTO</replyTo>
+      <saveOutput>false</saveOutput>
+      <disabled>false</disabled>
+    </hudson.plugins.emailext.ExtendedEmailPublisher>
+  </publishers>
+  <buildWrappers/>
+</project>

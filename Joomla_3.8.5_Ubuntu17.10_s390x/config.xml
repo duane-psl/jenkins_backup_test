@@ -1,0 +1,137 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub17.10_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Install dependencies
+
+#Check if published version is already present in repo 
+package_name=&quot;joomla&quot;
+published_version=&quot;3.8.5&quot;
+
+#Check distro and available version in repo : ubuntu
+available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+### Install dependencies
+sudo apt-get update
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get install -y mysql-server
+sudo apt-get install -y wget apache2 php7.1 php7.1-mysql php7.1-mcrypt libapache2-mod-php7.1 libapache2-mod-perl2  php7.1-cli php7.1-common php7.1-curl php7.1-dev unzip curl
+
+
+### Make changes in the configuration file 
+sudo chmod 777 /etc/apache2/apache2.conf
+sudo cp /etc/apache2/apache2.conf /etc/apache2/apache2.conf.old
+sudo chmod 777 /etc/apache2/apache2.conf.old
+
+sudo echo -e &quot;AddType application/x-httpd-php .php&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;ServerName localhost&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot; DirectoryIndex index.php &quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt; /etc/apache2/apache2.conf
+
+diff -u /etc/apache2/apache2.conf.old /etc/apache2/apache2.conf || true
+
+
+# Get source code
+cd /var/www/html/
+sudo rm -rf Joomla
+sudo mkdir Joomla
+cd Joomla/
+sudo wget -O Joomla_3.8.5-Stable-Full_Package.zip  https://github.com/joomla/joomla-cms/releases/download/3.8.5/Joomla_3.8.5-Stable-Full_Package.zip
+sudo unzip Joomla_3.8.5-Stable-Full_Package.zip
+sudo chmod a+w /var/www/html/Joomla/
+
+#Rename configuration.php-dist as configuration.php
+sudo mv installation/configuration.php-dist installation/configuration.php
+
+# Start mysql server
+sudo /usr/sbin/mysqld --initialize --user=mysql --datadir=/var/lib/mysql/data
+sleep 5m
+sudo service mysql start
+sleep 20s
+
+# Create database 
+
+sudo /usr/bin/mysql  -e &quot;create database Joomla&quot;
+sudo /usr/bin/mysql  -e &quot;create user &apos;user&apos;@&apos;localhost&apos; identified by &apos;password&apos;&quot;
+sudo /usr/bin/mysql  -e &quot;GRANT ALL PRIVILEGES ON *.* TO &apos;user&apos;@&apos;localhost&apos; identified by &apos;password&apos;&quot;	     
+
+# Start apache
+sudo /usr/sbin/apachectl -k start
+      
+
+# Verification
+wget http://127.0.0.1:80/Joomla/installation/index.php</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nthorat</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

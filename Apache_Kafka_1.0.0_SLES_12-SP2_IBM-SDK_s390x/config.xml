@@ -1,0 +1,173 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12-sp2-8192</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 3</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo zypper update -y 
+sudo zypper install -y git wget unzip java-1_8_0-ibm-devel
+export WORK_DIR=`pwd`
+cat /etc/os*
+
+#Install gradle
+wget https://services.gradle.org/distributions/gradle-4.2-bin.zip
+unzip gradle-4.2-bin.zip
+
+
+#Build kafka
+cd $WORK_DIR
+git clone https://github.com/apache/kafka
+cd kafka
+git checkout 1.0.0
+
+#Update build parameters
+cp build.gradle build.gradle.orig
+sed -i &apos;354d &apos; build.gradle
+sed -i &quot;354i \      \jvmArgs = [&apos;-Xss256m&apos;] + maxPermSizeArgs&quot; build.gradle
+git diff 
+
+#Set environment variables
+export PATH=$PATH:$WORK_DIR/gradle-4.2/bin
+export JAVA_HOME=/usr/lib64/jvm/java-1.8.0-ibm
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+#
+#cp $WORK_DIR/kafka/gradle/dependencies.gradle $WORK_DIR/kafka/gradle/dependencies.gradle.ori
+#sed -i &quot;s/5.0.1/5.7.3/g&quot; $WORK_DIR/kafka/gradle/dependencies.gradle
+#Setup Gradle and build the jar files
+gradle
+gradle jar
+
+cp $WORK_DIR/kafka/checkstyle/checkstyle.xml $WORK_DIR/kafka/checkstyle/checkstyle.xml.orig
+sed -i &quot;s|checkstyle/java.header|$WORK_DIR/kafka/checkstyle/java.header|&quot; $WORK_DIR/kafka/checkstyle/checkstyle.xml
+sed -i &quot;s|checkstyle/suppressions.xml|$WORK_DIR/kafka/checkstyle/suppressions.xml|&quot; $WORK_DIR/kafka/checkstyle/checkstyle.xml
+git diff 
+
+#Note for some test cases from streams:test module need to install rocksdb from source it is work around , 
+#Build rocksdb
+sudo zypper install -y snappy-devel libzip2 bzip2 curl gcc-c++ make which
+cd $WORK_DIR
+git clone https://github.com/facebook/rocksdb.git
+cd rocksdb
+git checkout v5.7.3
+sed -i -e &quot;s/-march=native/-march=z196/&quot; build_tools/build_detect_platform
+sed -i -e &quot;s/-momit-leaf-frame-pointer/-DDUMBDUMMY/&quot; Makefile
+PORTABLE=1 make shared_lib
+make rocksdbjava
+cd $WORK_DIR/rocksdb/java/target/
+cp rocksdbjni-5.7.3-linux64.jar rocksdbjni-5.7.3-linux64.jar.or
+jar -xf rocksdbjni-5.7.3-linux64.jar
+cp librocksdbjni-linux64.so librocksdbjni-linux32.so
+jar -ufv rocksdbjni-5.7.3-linux64.jar librocksdbjni-linux32.so
+jar -tf rocksdbjni-5.7.3-linux64.jar
+cp rocksdbjni-5.7.3-linux64.jar /home/test/
+cd /home/test
+mv rocksdbjni-5.7.3-linux64.jar rocksdbjni-5.7.3.jar
+
+
+cp -vf /home/test/rocksdbjni-5.7.3.jar $WORK_DIR/kafka/streams/examples/build/dependant-libs-2.11.11/
+cp -vf /home/test/rocksdbjni-5.7.3.jar $WORK_DIR/kafka/streams/build/dependant-libs-2.11.11/
+
+cp -vf /home/test/rocksdbjni-5.7.3.jar $HOME/.gradle/caches/modules-2/files-2.1/org.rocksdb/rocksdbjni/5.7.3/e3aa988ff3e0ba70a63a00ecdc96d5d6c97ba385/
+#========Workaround part finished=========================================
+
+cd $WORK_DIR/kafka
+gradle test --continue 2&gt;&amp;1 | tee testlog.log  
+
+sed -i &apos;s/Xloggc/Xverbosegclog/&apos; bin/kafka-run-class.sh
+
+
+nohup bin/zookeeper-server-start.sh -daemon config/zookeeper.properties &amp;
+sleep 5m
+nohup bin/kafka-server-start.sh -daemon config/server.properties &amp;
+sleep 5m
+ps -aux
+
+bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic test
+sleep 5m
+bin/kafka-topics.sh --list --zookeeper localhost:2181
+sleep 5m
+echo -e &quot;Congratulations\nThe build is working\n\nWelcome to Apache Kafka with Linux on z Systems\n&quot; &gt; /tmp/msg.log
+bin/kafka-console-producer.sh --broker-list localhost:9092 --topic test &lt; /tmp/msg.log
+sleep 5m
+
+bin/kafka-console-consumer.sh --zookeeper localhost:2181 --topic test --from-beginning --max-messages 4 &gt; $WORK_DIR/output.txt
+sleep 5m
+cat $WORK_DIR/output.txt
+echo &quot;Welcome to Apache Kafka with Linux on z Systems&quot; &gt;&gt; expectedoutput.txt
+grep &quot;Welcome to Apache Kafka with Linux on z Systems&quot; $WORK_DIR/output.txt &gt; actualoutput.txt
+cat expectedoutput.txt
+cat actualoutput.txt
+kill -9 $(ps aux | grep &apos;kafka&apos; | awk &apos;{print $2}&apos;)| awk &apos;{print $2}&apos;
+if diff -u -w expectedoutput.txt actualoutput.txt ; then
+    echo &quot;Success&quot;
+    exit 0
+else    
+	exit 1
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@abhays</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

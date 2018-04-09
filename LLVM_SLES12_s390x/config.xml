@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 6</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 6</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo zypper install -y gcc-c++ make tar wget
+
+workspace_dir=`pwd`
+
+wget https://www.python.org/ftp/python/2.7.9/Python-2.7.9.tar.xz
+tar -xvf Python-2.7.9.tar.xz
+cd Python-2.7.9
+./configure --prefix=/usr/local
+make 
+make install
+cd ..
+
+# LLVM Source Code
+wget http://llvm.org/releases/3.7.0/llvm-3.7.0.src.tar.xz &amp;&amp; tar xvf llvm-3.7.0.src.tar.xz
+
+# Clang Source Code
+wget http://llvm.org/releases/3.7.0/cfe-3.7.0.src.tar.xz &amp;&amp; tar xvf cfe-3.7.0.src.tar.xz
+        
+# Compiler-rt Source Code
+wget http://llvm.org/releases/3.7.0/compiler-rt-3.7.0.src.tar.xz &amp;&amp; tar xvf compiler-rt-3.7.0.src.tar.xz
+
+# Move the clang and compiler-rt to  tools and projects folders of llvm  respectively.
+
+mv llvm-3.7.0.src/ llvm-3.7.0
+mv cfe-3.7.0.src/ clang
+mv clang/ llvm-3.7.0/tools/
+mv compiler-rt-3.7.0.src/ compiler-rt
+mv compiler-rt/ llvm-3.7.0/projects/
+
+
+mkdir -p llvm-build
+
+cd llvm-build
+../llvm-3.7.0/configure --enable-optimized --enable-targets=systemz
+
+make &amp;&amp; make check-all
+
+export PATH=$PATH:$workspace_dir/llvm-build/Release+Asserts/bin
+
+touch /etc/ld.so.conf.d/llvm.conf
+
+echo &quot;$workspace_dir/llvm-build/Release+Asserts/lib&quot; &gt; /etc/ld.so.conf.d/llvm.conf
+
+ldconfig
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.2">
+      <script plugin="script-security@1.13">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <hudson.plugins.emailext.ExtendedEmailPublisher plugin="email-ext@2.40.5">
+      <recipientList>$DEFAULT_RECIPIENTS</recipientList>
+      <configuredTriggers>
+        <hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+          <email>
+            <recipientList></recipientList>
+            <subject>$PROJECT_DEFAULT_SUBJECT</subject>
+            <body>$PROJECT_DEFAULT_CONTENT</body>
+            <recipientProviders>
+              <hudson.plugins.emailext.plugins.recipients.ListRecipientProvider/>
+            </recipientProviders>
+            <attachmentsPattern></attachmentsPattern>
+            <attachBuildLog>false</attachBuildLog>
+            <compressBuildLog>false</compressBuildLog>
+            <replyTo>$PROJECT_DEFAULT_REPLYTO</replyTo>
+            <contentType>project</contentType>
+          </email>
+        </hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+      </configuredTriggers>
+      <contentType>default</contentType>
+      <defaultSubject>$DEFAULT_SUBJECT</defaultSubject>
+      <defaultContent>$DEFAULT_CONTENT</defaultContent>
+      <attachmentsPattern></attachmentsPattern>
+      <presendScript>$DEFAULT_PRESEND_SCRIPT</presendScript>
+      <attachBuildLog>true</attachBuildLog>
+      <compressBuildLog>false</compressBuildLog>
+      <replyTo>$DEFAULT_REPLYTO</replyTo>
+      <saveOutput>false</saveOutput>
+      <disabled>false</disabled>
+    </hudson.plugins.emailext.ExtendedEmailPublisher>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,152 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_ubuntu17.10_8192</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 15 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 15 * * 4</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;magento&quot;
+published_version=&quot;2.2.2&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+#-----------------------------------------------------------------------------------------
+export WORK_DIR=`pwd`
+
+sudo apt-get -y update
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get install -y mysql-server
+
+sudo apt-get install -y  apache2 wget tar composer curl
+sudo apt-get install -y php7.1-mysql php7.1-curl php7.1-json php7.1-xsl php7.1-xml php7.1-mcrypt php7.1-mbstring php7.1-intl php7.1-zip php7.1-gd libapache2-mod-php7.1 php7.1-soap
+
+sudo service mysql start
+sudo service mysql status
+
+php --version
+apache2 -v
+mysql --version
+composer --version
+
+#Edit Apache2 config files
+sudo chmod 766 /etc/apache2/apache2.conf
+sudo cp /etc/apache2/apache2.conf /etc/apache2/apache2.conf1
+sudo echo -e &quot;ServerName localhost&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &apos;&lt;Directory &quot;/var/www/html&quot;&gt;&apos; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;AllowOverride  All&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt; /etc/apache2/apache2.conf
+
+diff -u /etc/apache2/apache2.conf1 /etc/apache2/apache2.conf  ||true
+
+sudo a2enmod rewrite
+
+
+#Download Magento source code
+cd /var/www/html/
+sudo chmod -R a+w /var/www/html/
+git clone https://github.com/magento/magento2.git
+cd magento2
+git checkout 2.2.2
+composer install
+
+#set permissions
+sudo useradd magusr
+echo &quot;magusr:maggie&quot;|sudo chpasswd
+sudo  usermod -g www-data magusr
+sudo usermod -aG sudo magusr
+sudo su magusr
+cd /var/www/html/magento2 &amp;&amp; sudo find var vendor pub/static pub/media app/etc -type f -exec chmod g+w {} \; &amp;&amp; sudo find var vendor pub/static pub/media app/etc -type d -exec chmod g+ws {} \; &amp;&amp; sudo chown -R :www-data . &amp;&amp; sudo chmod u+x bin/magento
+ 
+ 
+#Create database 
+sudo /usr/bin/mysql -e &quot;create database magento&quot;
+sudo /usr/bin/mysql -e &quot;create user &apos;magento&apos;@&apos;localhost&apos; &quot;
+sudo /usr/bin/mysql -e &quot;grant all privileges on magento.* to &apos;magento&apos;@&apos;localhost&apos;&quot;
+
+
+sudo service apache2 restart
+sudo service apache2 status
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @cgopi</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

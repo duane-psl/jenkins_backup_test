@@ -1,0 +1,164 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-sp3_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H H * * 6</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Install Dependencies
+sudo zypper update -y
+cat /etc/issue
+
+sudo zypper install -y automake boost-devel libtool gcc-c++ git make openssl-devel cyrus-sasl-devel pkgconfig wget which curl git
+
+ export SOURCE=`pwd`
+
+# Install cmake 3.7.1 latest version
+ rm -rf cmake-3.7.1.tar.gz cmake-3.7.1
+ wget https://cmake.org/files/v3.7/cmake-3.7.1.tar.gz &amp;&amp; tar xzf cmake-3.7.1.tar.gz &amp;&amp; cd cmake-3.7.1 &amp;&amp; ./bootstrap --prefix=/usr &amp;&amp; gmake &amp;&amp; sudo gmake install -e LD_LIBRARY_PATH=/opt/gcc4.8/lib64/
+ cmake --version
+
+# Install libmongoc driver
+ cd ../
+ rm -rf mongo-c-driver
+ git clone https://github.com/mongodb/mongo-c-driver.git &amp;&amp;  cd mongo-c-driver &amp;&amp;  git checkout r1.9
+./autogen.sh &amp;&amp; ./configure &amp;&amp; make clean &amp;&amp; make &amp;&amp; sudo make install
+
+# Install mongo-cxx-driver
+ cd ../
+ rm -rf r3.2.0.tar.gz
+ curl -OL https://github.com/mongodb/mongo-cxx-driver/archive/r3.2.0.tar.gz
+ tar -xzf r3.2.0.tar.gz
+ cd mongo-cxx-driver-r3.2.0/build
+ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local ..
+ export PATH=/usr/local:$PATH
+# Only for MNMLSTC polyfill
+ sudo make EP_mnmlstc_core
+# Once MNMLSTC is installed, or if you are using a different polyfill, build and install the driver:
+
+ make &amp;&amp; sudo make install
+
+cd ../../
+rm -rf test.cpp
+touch test.cpp
+
+
+echo &apos;#include &lt;iostream&gt;
+
+#include &lt;bsoncxx/builder/stream/document.hpp&gt;
+#include &lt;bsoncxx/json.hpp&gt;
+#include &lt;mongocxx/client.hpp&gt;
+#include &lt;mongocxx/instance.hpp&gt;
+
+int main(int, char**) {
+    mongocxx::instance inst{};
+    mongocxx::client conn{mongocxx::uri{}};
+
+    bsoncxx::builder::stream::document document{};
+
+    auto collection = conn[&quot;testdb&quot;][&quot;testcollection&quot;];
+    document &lt;&lt; &quot;hello&quot; &lt;&lt; &quot;world&quot;;
+
+    collection.insert_one(document.view());
+    auto cursor = collection.find({});
+
+    for (auto&amp;&amp; doc : cursor) {
+        std::cout &lt;&lt; bsoncxx::to_json(doc) &lt;&lt; std::endl;
+    }
+}&apos;&gt;&gt; test.cpp
+
+
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+c++ --std=c++11 test.cpp -o test $(pkg-config --cflags --libs libmongocxx)
+
+export LD_LIBRARY_PATH=/usr/local/lib/
+
+cd $SOURCE
+
+#Install MongoDB server
+
+
+
+sudo zypper install -y wget net-snmp cyrus-sasl cyrus-sasl-plain cyrus-sasl-gssapi
+wget https://repo.mongodb.com/zypper/suse/12/mongodb-enterprise/3.6/s390x/RPMS/mongodb-enterprise-server-3.6.3-1.suse12.s390x.rpm
+sudo rpm -Uvh mongodb-enterprise-server-3.6.3-1.suse12.s390x.rpm
+sudo mkdir -p db
+sudo /usr/bin/mongod --dbpath db &amp;
+sleep 40s
+# Execute test program
+./test &gt; test_result.log
+
+cat test_result.log
+
+echo -e &apos;{ &quot;_id&quot; : { &quot;$oid&quot; : &quot;5912af38b2c736cfdd73be82&quot; }, &quot;hello&quot; : &quot;world&quot; }&apos; &gt; expected_result.log
+
+sed -i &apos;s/&quot;_id&quot; : { &quot;$oid&quot; : &quot;[0-9 a-z]*&quot; }/&quot;_id&quot;/&apos; expected_result.log
+sed -i &apos;s/&quot;_id&quot; : { &quot;$oid&quot; : &quot;[0-9 a-z]*&quot; }/&quot;_id&quot;/&apos; test_result.log
+diff --ignore-all-space test_result.log expected_result.log
+
+if [ &quot;$?&quot; -eq 0 ]; then
+  echo &quot;OUTPUT FROM DATABASE&quot;
+  exit 0
+else
+  exit 1
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @agautam</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

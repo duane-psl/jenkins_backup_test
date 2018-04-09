@@ -1,0 +1,147 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-sp3_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 6</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 6</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Install dependencies
+sudo zypper update -y
+sudo zypper install -y ruby ruby-devel make gcc gcc-c++
+
+# dependencies for mongoDB Server
+sudo zypper install -y wget net-snmp cyrus-sasl cyrus-sasl-plain cyrus-sasl-gssapi timezone
+
+#Install the MongoDb Server
+wget https://repo.mongodb.com/zypper/suse/12/mongodb-enterprise/3.6/s390x/RPMS/mongodb-enterprise-server-3.6.1-1.suse12.s390x.rpm
+sudo rpm -Uvh mongodb-enterprise-server-3.6.1-1.suse12.s390x.rpm
+sudo mkdir -p db
+sudo /usr/bin/mongod --dbpath db &amp;
+sleep 40s
+
+#Set the Gem Environment
+export GEM_HOME=/home/test/.gem/ruby
+export PATH=/home/test/.gem/ruby/bin:$PATH
+
+#Install th Ruby driver
+sudo gem install mongo -v 2.5.1
+
+
+
+
+echo -e &quot;{\&quot;_id\&quot;=&gt;BSON::ObjectId(&apos;000002aafe4122006d000002&apos;), \&quot;company\&quot;=&gt;\&quot;IBM\&quot;, \&quot;project\&quot;=&gt;\&quot;MongoDB Driver\&quot;, \&quot;language\&quot;=&gt;\&quot;Ruby\&quot;, \&quot;version\&quot;=&gt;\&quot;2.5.1\&quot;} 
+ {\&quot;_id\&quot;=&gt;1, \&quot;line\&quot;=&gt;1} 
+ {\&quot;_id\&quot;=&gt;2, \&quot;line\&quot;=&gt;2} 
+ {\&quot;_id\&quot;=&gt;3, \&quot;line\&quot;=&gt;3} &quot;&gt; expected_result.log 
+
+
+echo -e &quot;
+require \&quot;mongo\&quot;
+
+server=\&quot;localhost\&quot;
+test_db=\&quot;ibm_test_db2\&quot;
+collection=\&quot;mongodb_ruby_driver_2_x\&quot;
+
+server_addr=server + \&quot;:27017\&quot;
+
+Mongo::Logger.logger.level = ::Logger::FATAL   # hide DEBUG logging
+
+db = Mongo::Client.new([ server_addr ], :database =&gt; test_db)
+
+db[:collection].drop
+
+result = db[:collection].insert_one({ company: \&quot;IBM\&quot; , project: \&quot;MongoDB Driver\&quot;, language: \&quot;Ruby\&quot;, version: \&quot;2.5.1\&quot;})
+
+3.times { |i| db[:collection].insert_one({ _id: i+1, line: i+1 }) }
+
+db[:collection].find().each do |document|
+  printf(\&quot;%s \\\n \&quot;, document)#=&gt; Yields a BSON::Document.
+end&quot; &gt; test.rb
+
+
+sleep 100
+
+ruby test.rb &gt; test_result.log
+
+
+sed -i &quot;s/ObjectId(&apos;[0-9 a-z]*&apos;)/&apos;_id&apos;/&quot; test_result.log
+sed -i &quot;s/ObjectId(&apos;[0-9 a-z]*&apos;)/&apos;_id&apos;/&quot; expected_result.log
+
+sed &apos;/^\s*$/d&apos;  test_result.log &gt; file1.txt
+sed &apos;/^\s*$/d&apos;  expected_result.log &gt; file2.txt
+
+
+diff --suppress-common-lines file1.txt file2.txt
+
+
+if [ &quot;$?&quot; -eq 0 ]; then
+  echo &quot;OUTPUT FROM DATABASE&quot;
+  cat file1.txt
+  exit 0
+else
+  exit 1
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@preeti.khorjuvenkar,@ketank </room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

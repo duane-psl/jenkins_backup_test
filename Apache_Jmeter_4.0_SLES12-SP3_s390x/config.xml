@@ -1,0 +1,168 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-sp3_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>rm -rf ./*
+export WS=`pwd`
+sudo zypper refresh
+sudo zypper update -y
+#Install dependencies from repo
+sudo zypper install -y git java-1_8_0-openjdk-devel ant liberation-fonts net-tools
+
+#Set JAVA_HOME
+export JAVA_HOME=/usr/lib64/jvm/java-1.8.0-openjdk
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+#Install openjfx dependencies
+sudo zypper install -y mercurial bison flex gperf ksh pkgconfig \
+libpng12-devel libjpeg-devel libxml2-devel libxslt-devel systemd-devel glib2-devel gtk2-devel  \
+libXtst-devel pango-devel freetype-devel wget unzip ant gcc gcc-c++
+
+#Install gradle
+wget https://services.gradle.org/distributions/gradle-1.8-bin.zip
+unzip gradle-1.8-bin.zip
+export PATH=$PATH:$PWD/gradle-1.8/bin
+
+#Get openjfx source
+hg clone http://hg.openjdk.java.net/openjfx/8u60/rt
+cp $WS/rt/build.gradle $WS/rt/build.gradle.orig
+
+#Add s390x support
+sed -i &apos;707d&apos; $WS/rt/build.gradle
+sed -i &apos;706a} else if (IS_LINUX &amp;&amp; OS_ARCH != &quot;i386&quot; &amp;&amp; OS_ARCH != &quot;amd64&quot; &amp;&amp; OS_ARCH != &quot;s390x&quot;) {&apos; $WS/rt/build.gradle
+sed -i &apos;250d&apos; $WS/rt/build.gradle
+sed -i &apos;249aext.IS_64 = OS_ARCH.toLowerCase().contains(&quot;64&quot;) || OS_ARCH.contains(&quot;s390x&quot;)&apos; $WS/rt/build.gradle
+diff -u $WS/rt/build.gradle.orig $WS/rt/build.gradle || true
+
+#Add fix: http://hg.openjdk.java.net/openjfx/9-dev/rt/rev/d5312b49f9ad for build failure with latest OpenJDK
+cd $WS/rt
+sed -i &quot;81aimport sun.java2d.SurfaceData;&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;690d&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;689a\                newScaleFactor = getDefaultScale(((SunGraphics2D)g).surfaceData);&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;649a\    private int getDefaultScale(SurfaceData surfaceData) {&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;650a\        double scale = 1;&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;651a\        try {&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &apos;652a\            Method meth = SurfaceData.class.getMethod(&quot;getDefaultScaleX&quot;);&apos; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;653a\            scale = (Double)meth.invoke(surfaceData);&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;654a\        } catch (Exception ex) {&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;655a\        }&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;656a\        return (int)Math.round(scale);&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+sed -i &quot;657a\    }&quot; modules/swing/src/main/java/javafx/embed/swing/JFXPanel.java
+hg diff
+
+#Increase grammar conversion timeout for antlr
+cp $WS/rt/buildSrc/build.gradle $WS/rt/buildSrc/build.gradle.orig
+sed -i &apos;117d&apos; $WS/rt/buildSrc/build.gradle
+sed -i &apos;116a\\targs = [&quot;-Xconversiontimeout&quot;, 30000, &quot;-o&quot;, dest, grammars.files].flatten()&apos; $WS/rt/buildSrc/build.gradle
+diff -u $WS/rt/buildSrc/build.gradle.orig $WS/rt/buildSrc/build.gradle || true
+
+#Build and test openjfx
+sudo rm -rf /usr/lib64/jvm/java-1.8.0-openjdk/jre/lib/ext/jfxrt.jar
+cd $WS/rt
+gradle
+#gradle test
+
+#Copy jfxrt.jar 
+sudo cp $WS/rt/build/sdk/rt/lib/ext/jfxrt.jar  /usr/lib64/jvm/java-1.8.0-openjdk/jre/lib/ext/
+
+#Get Jmeter source and build
+git clone git://git.apache.org/jmeter.git
+cd jmeter/
+git checkout v4_0
+ant download_jars
+ant
+
+#Skip expected failures
+cp build.xml build.xml.orig
+sed -i -e &apos;s/property name=&quot;skip.batchtest_SlowCharsFeature&quot; value=&quot;false&quot;/property name=&quot;skip.batchtest_SlowCharsFeature&quot; value=&quot;true&quot;/g&apos; build.xml
+sed -i -e &apos;s/property name=&quot;skip.batchtest_TestKeepAlive&quot; value=&quot;false&quot;/property name=&quot;skip.batchtest_TestKeepAlive&quot; value=&quot;true&quot;/g&apos; build.xml
+diff -u build.xml.orig build.xml || true
+
+#Increase timeout
+cp bin/testfiles/TestSchedulerWithTimer.jmx bin/testfiles/TestSchedulerWithTimer.jmx.orig
+sed -i &apos;173d&apos; bin/testfiles/TestSchedulerWithTimer.jmx
+sed -i &apos;172along maxDurationPlusMargin = vars[&amp;quot;MaxDuration&amp;quot;].toInteger()*100000+500;&apos; bin/testfiles/TestSchedulerWithTimer.jmx
+diff -u bin/testfiles/TestSchedulerWithTimer.jmx.orig bin/testfiles/TestSchedulerWithTimer.jmx || true
+
+#Run tests
+ant test -Djava.awt.headless=true 
+
+#Comment out G1GC algorithm as it is unimplemented in OpenJDK zero
+cp bin/jmeter bin/jmeter.orig
+sed -i &apos;178d&apos; bin/jmeter
+sed -i &apos;177a# : &quot;${GC_ALGO:=&quot;-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:G1ReservePercent=20&quot;}&quot;
+&apos; bin/jmeter
+diff -u bin/jmeter.orig bin/jmeter || true
+
+#Verify
+export PATH=$PATH:`pwd`/bin/
+jmeter --version</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@abhays</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

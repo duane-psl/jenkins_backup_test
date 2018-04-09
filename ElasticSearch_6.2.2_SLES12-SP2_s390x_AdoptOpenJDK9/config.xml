@@ -1,0 +1,180 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-SP2_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 10 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;elasticsearch&quot;
+published_version=&quot;6.2.2&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+export WORK_DIR=`pwd`
+#Install dependencies
+sudo zypper update -y
+cat /etc/issue
+sudo zypper install -y tar wget unzip curl which git words gcc-c++ patch libtool automake autoconf ccache xorg-x11-proto-devel xorg-x11-devel alsa-devel cups-devel libffi48-devel libstdc++6-locale glibc-locale libstdc++-devel libXt-devel libX11-devel texinfo ant ant-junit.noarch make net-tools
+
+
+#Install AdoptJDK
+cd $WORK_DIR
+wget https://github.com/AdoptOpenJDK/openjdk9-releases/releases/download/jdk-9%2B181/OpenJDK9_s390x_Linux_jdk-9.181.tar.gz
+tar -xvf OpenJDK9_s390x_Linux_jdk-9.181.tar.gz
+export JAVA_HOME=$WORK_DIR/jdk-9+181/ 
+export PATH=$JAVA_HOME/bin:$PATH
+java -version 
+
+
+#Set Environmetal variable
+unset JAVA_TOOL_OPTIONS
+export LANG=&quot;en_US.UTF-8&quot;
+export JAVA_TOOL_OPTIONS=&quot;-Dfile.encoding=UTF8&quot;
+export ANT_HOME=/usr/share/ant/
+export PATH=&quot;$ANT_HOME/bin:$PATH&quot;
+#export _JAVA_OPTIONS=&quot;-Xmx10g&quot;
+
+# Download Elasticsearch source code
+cd $WORK_DIR
+sudo rm -rf elasticsearch
+git clone https://github.com/elastic/elasticsearch
+cd elasticsearch
+git checkout v6.2.2
+
+
+#Build Package
+./gradlew assemble
+                      
+
+## Run Network test cases
+cd $WORK_DIR/elasticsearch
+./gradlew test --continue -Dtests.haltonfailure=false -Dtests.es.node.mode=network  2&gt;&amp;1 | tee -a network_test_log
+
+# Run Local test cases
+cd $WORK_DIR/elasticsearch
+./gradlew test --continue -Dtests.haltonfailure=false -Dtests.es.node.mode=local  2&gt;&amp;1 | tee -a local_test_log
+
+#Verification Steps
+cd $WORK_DIR/elasticsearch
+sudo tar -C /usr/share/ -xf  distribution/tar/build/distributions/elasticsearch-6.2.2-SNAPSHOT.tar.gz
+sudo rm -rf /usr/share/elasticsearch
+sudo mv /usr/share/elasticsearch-6.2.2-SNAPSHOT /usr/share/elasticsearch
+
+#Start Elastic Search Server
+sudo /usr/sbin/groupadd test
+sudo chown test:test -R /usr/share/elasticsearch
+/usr/share/elasticsearch/bin/elasticsearch --version | grep 6.2.2
+nohup /usr/share/elasticsearch/bin/elasticsearch &amp;
+sleep 30s
+curl http://localhost:9200/
+
+ps -aef 
+
+pgrep -d&quot; &quot; -f &quot;elasticsearch&quot; | xargs kill;
+
+ps -aef
+
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,112 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>preeti_ub</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H H * * *</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Docker installation
+sudo apt-get update
+cat /etc/os*
+sudo apt-get install -y apt-transport-https  ca-certificates  curl software-properties-common 
+# wget
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+#wget https://download.docker.com/linux/ubuntu/gpg
+#sudo apt-key add gpg
+sudo add-apt-repository &quot;deb [arch=s390x] https://download.docker.com/linux/ubuntu  $(lsb_release -cs) stable&quot;
+sudo apt-get update
+sudo apt-get install -y docker-ce
+
+sudo service docker start
+sleep 20s
+sudo service docker status
+
+#Service catalog
+sudo apt-get update
+sudo apt-get install -y git make 
+export GOPATH=`pwd`
+mkdir -p $GOPATH/src/github.com/kubernetes-incubator
+cd $GOPATH/src/github.com/kubernetes-incubator
+git clone https://github.com/kubernetes-incubator/service-catalog.git
+cd service-catalog
+git checkout v0.1.5
+
+sed -i &apos;15 s/golang/s390x\/golang/&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;21 s/v0.12.3/v0.13.0/&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;23 s/amd64/s390x/&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;/ENV DEP_VERSION/d&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;/$\DEP_VERSION/d&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;27d&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;27i RUN go get -u -v github.com/golang/dep/cmd/dep &amp;&amp; \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;28i 	ln -s /go/bin/dep /usr/local/bin/dep&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;31d&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;/etcd-v3.1.10/d&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;31i ENV ETCD_DATA_DIR=/data ETCD_UNSUPPORTED_ARCH=s390x&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;32i RUN mkdir -p /src/github.com/coreos \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;33i &amp;&amp; cd /src/github.com/coreos \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;34i &amp;&amp; rm -rf etcd \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;35i &amp;&amp; git clone https://github.com/coreos/etcd \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;36i &amp;&amp; cd etcd \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;37i &amp;&amp; git checkout v3.2.7 \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;38i &amp;&amp; mkdir -p /data \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;39i &amp;&amp; ./build \\&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+sed -i &apos;40i &amp;&amp; cd bin &amp;&amp; cp -rf etcd etcdctl /usr/bin/&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/build/build-image/Dockerfile
+
+git diff
+cd $GOPATH/src/github.com/kubernetes-incubator/service-catalog
+sudo -E make build ARCH=s390x 
+export PATH=$GOPATH/src/github.com/kubernetes-incubator/service-catalog/bin:$PATH
+
+sed -i &apos;251 s/-race//&apos; $GOPATH/src/github.com/kubernetes-incubator/service-catalog/Makefile
+git diff
+
+cd $GOPATH/src/github.com/kubernetes-incubator/service-catalog
+sudo -E make test-unit ARCH=s390x
+
+#Note : Added sudo -E because docker is installed with sudo and need to add test user to docker group.
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>@preeti.khorjuvenkar,@ketank</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@3.0.1">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <url>https://github.com/doxygen/doxygen.git</url>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>Release_1_8_11</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions>
+      <hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+        <relativeTargetDir>doxygen</relativeTargetDir>
+      </hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+    </extensions>
+  </scm>
+  <assignedNode>dc2_rh6_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 4</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo yum install -y git flex bison gcc gcc-c++ texlive-latex.s390x make python-argparse.noarch openssl wget tar qt-devel-4.6.2-28.el6_5.s390x unzip
+
+# Install dependencies(latex) for make docs command
+
+#wget http://mirrors.ctan.org/macros/latex/contrib/multirow/multirow.sty
+
+wget http://mirrors.ctan.org/macros/latex/contrib/multirow/multirow.dtx
+wget http://mirrors.ctan.org/macros/latex/contrib/multirow/multirow.ins
+wget http://mirrors.ctan.org/macros/latex/contrib/multirow/multirow.pdf
+latex multirow.ins
+
+wget  http://mirrors.ctan.org/macros/latex/contrib/import/import.sty 
+wget http://mirrors.ctan.org/macros/latex/contrib/xtab/xtab.dtx
+wget http://mirrors.ctan.org/macros/latex/contrib/xtab/xtab.ins 
+wget http://mirrors.ctan.org/macros/latex/contrib/xtab/xtab.pdf 
+latex xtab.ins 
+
+wget http://mirrors.ctan.org/macros/latex/contrib/sectsty/sectsty.dtx
+wget http://mirrors.ctan.org/macros/latex/contrib/sectsty/sectsty.ins 
+wget http://mirrors.ctan.org/macros/latex/contrib/sectsty/sectsty.pdf 
+latex sectsty.ins 
+
+wget http://mirrors.ctan.org/macros/latex/contrib/tocloft/tocloft.dtx 
+wget http://mirrors.ctan.org/macros/latex/contrib/tocloft/tocloft.ins 
+wget http://mirrors.ctan.org/macros/latex/contrib/tocloft/tocloft.pdf 
+latex tocloft.ins 
+
+wget http://mirrors.ctan.org/macros/latex/contrib/appendix/appendix.dtx 
+wget http://mirrors.ctan.org/macros/latex/contrib/appendix/appendix.ins 
+wget http://mirrors.ctan.org/macros/latex/contrib/appendix/appendix.pdf 
+wget http://mirrors.ctan.org/macros/latex/contrib/appendix.zip
+#unzip appendix.zip
+#cd appendix
+#latex appendix.ins 
+#cd ..
+
+wget http://mirrors.ctan.org/macros/latex/contrib/tabu/tabu.dtx 
+wget http://mirrors.ctan.org/macros/latex/contrib/tabu/tabu.ins 
+wget http://mirrors.ctan.org/macros/latex/contrib/tabu/tabu.pdf 
+latex tabu.ins
+
+# The files are made available to latex by placing at specific location  
+
+sudo cp *.sty /usr/share/texmf/tex/latex/  
+sudo mktexlsr
+
+cd doxygen
+
+mkdir build
+cd build
+
+wget http://www.cmake.org/files/v2.8/cmake-2.8.12.1.tar.gz --no-check-certificate
+gzip -d cmake-2.8.12.1.tar.gz
+tar xvf cmake-2.8.12.1.tar
+cd cmake-2.8.12.1
+./configure --prefix=/cmake-2.8.12.1/cmake
+make
+sudo make install 
+
+cd ..
+cmake-2.8.12.1/bin/cmake -G &quot;Unix Makefiles&quot; -Dbuild_doc=ON -Dbuild_wizard=YES ..
+make
+make docs
+sudo make install
+make tests
+
+doxygen -v
+if [[ $? -gt 0 ]]
+then
+	exit 1
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <hudson.plugins.emailext.ExtendedEmailPublisher plugin="email-ext@2.53">
+      <recipientList>$DEFAULT_RECIPIENTS</recipientList>
+      <configuredTriggers>
+        <hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+          <email>
+            <recipientList></recipientList>
+            <subject>$PROJECT_DEFAULT_SUBJECT</subject>
+            <body>$PROJECT_DEFAULT_CONTENT</body>
+            <recipientProviders>
+              <hudson.plugins.emailext.plugins.recipients.ListRecipientProvider/>
+            </recipientProviders>
+            <attachmentsPattern></attachmentsPattern>
+            <attachBuildLog>false</attachBuildLog>
+            <compressBuildLog>false</compressBuildLog>
+            <replyTo>$PROJECT_DEFAULT_REPLYTO</replyTo>
+            <contentType>project</contentType>
+          </email>
+        </hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+      </configuredTriggers>
+      <contentType>default</contentType>
+      <defaultSubject>$DEFAULT_SUBJECT</defaultSubject>
+      <defaultContent>$DEFAULT_CONTENT</defaultContent>
+      <attachmentsPattern></attachmentsPattern>
+      <presendScript>$DEFAULT_PRESEND_SCRIPT</presendScript>
+      <attachBuildLog>true</attachBuildLog>
+      <compressBuildLog>false</compressBuildLog>
+      <replyTo>$DEFAULT_REPLYTO</replyTo>
+      <saveOutput>false</saveOutput>
+      <disabled>false</disabled>
+    </hudson.plugins.emailext.ExtendedEmailPublisher>
+  </publishers>
+  <buildWrappers/>
+</project>

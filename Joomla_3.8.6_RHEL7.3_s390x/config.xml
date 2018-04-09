@@ -1,0 +1,149 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.3_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 4 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Check if published version is already present in repo 
+package_name=&quot;joomla&quot;
+published_version=&quot;3.8.6&quot;
+
+#Check distro and available version in repo : ubuntu
+available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+# Install dependencies
+sudo yum install -y wget httpd httpd-devel.s390x mariadb mariadb-server unzip tar make libxml2 libxml2-devel libpng libpng-devel gcc-c++
+
+
+# Build and Install libmcrypt
+wget http://sourceforge.net/projects/mcrypt/files/Libmcrypt/2.5.8/libmcrypt-2.5.8.tar.gz
+tar -xvzf libmcrypt-2.5.8.tar.gz
+cd libmcrypt-2.5.8
+./configure
+make
+sudo make install
+cd ..
+
+# Build and Install PHP 
+wget http://www.php.net/distributions/php-5.6.8.tar.gz 
+tar xvzf php-5.6.8.tar.gz
+cd php-5.6.8
+./configure --prefix=/usr/local/php --with-config-file-path=/usr/local/php --with-mysql --with-gd --with-zlib --with-mcrypt --with-apxs2=/usr/bin/apxs
+make  
+sudo make install
+export PATH=/usr/local/php/bin/:$PATH
+sudo ln -s -f /usr/local/php/bin/phar.phar /usr/local/php/bin/phar
+
+
+sudo chmod 777 /etc/httpd/conf/httpd.conf
+sudo cp /etc/httpd/conf/httpd.conf /etc/httpd/conf/httpd.conf.old
+sudo chmod 777 /etc/httpd/conf/httpd.conf.old
+
+grep -q -F &quot;AddType application/x-httpd-php .php&quot; /etc/httpd/conf/httpd.conf || printf &quot;%s\n&quot; &quot;AddType application/x-httpd-php .php&quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+printf &quot;%s\n&quot; &quot;&lt;Directory /&gt;&quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+grep -q -F &quot; DirectoryIndex index.php &quot; /etc/httpd/conf/httpd.conf || printf &quot;%s\n&quot; &quot; DirectoryIndex index.php &quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+printf &quot;%s\n&quot; &quot;&lt;/Directory&gt;&quot; &gt;&gt; /etc/httpd/conf/httpd.conf
+
+diff -u /etc/httpd/conf/httpd.conf.old /etc/httpd/conf/httpd.conf || true
+
+#Download and install Joomla
+cd /var/www/html
+sudo rm -rf Joomla
+sudo mkdir Joomla
+cd Joomla
+sudo wget -O Joomla_3.8.6-Stable-Full_Package.zip  https://github.com/joomla/joomla-cms/releases/download/3.8.6/Joomla_3.8.6-Stable-Full_Package.zip
+sudo unzip Joomla_3.8.6-Stable-Full_Package.zip
+sudo chmod a+w /var/www/html/Joomla/
+
+#Rename configuration.php-dist as configuration.php
+sudo mv installation/configuration.php-dist installation/configuration.php 
+
+#Initialize MySQL server
+sudo /usr/bin/mysql_install_db --user=mysql
+sleep 30s
+sudo /usr/bin/mysqld_safe --user=mysql &amp;  
+sleep 20s
+
+#Grant privileges
+sudo /usr/bin/mysql -e &quot;create database Joomla&quot;
+sudo /usr/bin/mysql -e &quot;create user &apos;user&apos;@&apos;localhost&apos; identified by &apos;password&apos;&quot;
+sudo /usr/bin/mysql -e  &quot;GRANT ALL PRIVILEGES ON *.* TO &apos;user&apos;@&apos;localhost&apos; identified by &apos;password&apos;&quot;      
+
+#Start Apache http server
+sudo /usr/sbin/httpd -D BACKGROUND
+
+curl http://127.0.0.1:80/Joomla
+curl http://127.0.0.1:80/Joomla/installation/index.php
+wget http://127.0.0.1:80/Joomla/installation/index.php</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nthorat</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

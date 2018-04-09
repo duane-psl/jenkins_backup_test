@@ -1,0 +1,254 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>Beats</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;beats&quot;
+published_version=&quot;6.2.2&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+sudo rm -rf ./*
+export WS=$PWD
+echo $PATH
+
+# Install build dependencies
+sudo zypper info python
+sudo zypper info beats* || true
+sudo zypper update -y
+sudo zypper install -y git awk make wget tar gcc libpcap libpcap-devel  python-setuptools git python-xml python python-devel python-cffi openssl-devel libffi-devel acl 
+
+#Install required Python modules
+sudo python -m easy_install pip
+sudo python -m pip install appdirs pyparsing six packaging setuptools wheel PyYAML termcolor ordereddict nose-timer MarkupSafe virtualenv
+   
+# Go 1.9.2
+cd $WS
+wget https://storage.googleapis.com/golang/go1.9.2.linux-s390x.tar.gz
+tar -xzf go1.9.2.linux-s390x.tar.gz
+chmod ugo+r go1.9.2.linux-s390x.tar.gz
+sudo tar -C /usr/local -xzf go1.9.2.linux-s390x.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+cd /usr/bin
+sudo ln gcc s390x-linux-gnu-gcc
+go version
+
+
+# Set environment variable
+export GOPATH=$WS
+
+# Set default permissions
+setfacl -dm u::rwx,g::r,o::r $GOPATH
+
+# Download source code
+mkdir -p $GOPATH/src/github.com/elastic
+cd $GOPATH/src/github.com/elastic
+rm -rf beats
+git clone https://github.com/elastic/beats.git
+cd beats
+git checkout v6.2.2
+
+
+#Code change to fix metricbeat socket test
+cp $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go.orig
+
+sed -i &apos;14a\\t&quot;runtime&quot;&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;198d&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;198d&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;198d&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;198d&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;198d&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;197a\\t if ( runtime.GOARCH == &quot;s390x&quot; ) {&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;198a\\t\t binary.BigEndian.PutUint32(b[0:4], msg.Header.Len)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;199a\\t\t binary.BigEndian.PutUint16(b[4:6], msg.Header.Type)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;200a\\t\t binary.BigEndian.PutUint16(b[6:8], msg.Header.Flags)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;201a\\t\t binary.BigEndian.PutUint32(b[8:12], msg.Header.Seq)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;202a\\t\t binary.BigEndian.PutUint32(b[12:16], msg.Header.Pid)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;203a\\t } else {&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;204a\\t\t binary.LittleEndian.PutUint32(b[0:4], msg.Header.Len)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;205a\\t\t binary.LittleEndian.PutUint16(b[4:6], msg.Header.Type)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;206a\\t\t binary.LittleEndian.PutUint16(b[6:8], msg.Header.Flags)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;207a\\t\t binary.LittleEndian.PutUint32(b[8:12], msg.Header.Seq)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;208a\\t\t binary.LittleEndian.PutUint32(b[12:16], msg.Header.Pid)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;209a\\t }&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;327d&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;326a\\t var err error&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;327a\\t if ( runtime.GOARCH == &quot;s390x&quot; ) {&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;328a\\t\t err = binary.Read(r, binary.BigEndian, inetDiagMsg)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;329a\\t } else {&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;330a\\t\t err = binary.Read(r, binary.LittleEndian, inetDiagMsg)&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+sed -i &apos;331a\\t }&apos; $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go
+
+diff -u $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go.orig $GOPATH/src/github.com/elastic/beats/vendor/github.com/elastic/gosigar/sys/linux/inetdiag.go || true
+
+#This part is just to relax timeouts. Not mentioned in recipe.
+cp $GOPATH/src/github.com/elastic/beats/libbeat/scripts/Makefile $GOPATH/src/github.com/elastic/beats/libbeat/scripts/Makefile.orig
+sed -i 35d $GOPATH/src/github.com/elastic/beats/libbeat/scripts/Makefile
+sed -i &apos;34aTIMEOUT?= 900000&apos; $GOPATH/src/github.com/elastic/beats/libbeat/scripts/Makefile
+diff -u $GOPATH/src/github.com/elastic/beats/libbeat/scripts/Makefile.orig  $GOPATH/src/github.com/elastic/beats/libbeat/scripts/Makefile || true
+find $GOPATH/src/github.com/elastic/beats/ -type f -iname &quot;*.py&quot; -print0 | xargs -0 sed -i &apos;s/max_timeout=10/max_timeout=1000/g&apos;
+git diff $GOPATH/src/github.com/elastic/beats || true
+
+#Code change to fix audit test
+sed -i &apos;s/arch=b64/arch=s390x || arch=b64/g&apos; $GOPATH/src/github.com/elastic/beats/auditbeat/module/auditd/config_linux_test.go
+
+
+# Build and test filebeat.
+cd $GOPATH/src/github.com/elastic/beats/filebeat
+make
+./filebeat --version
+make update
+make unit
+make system-tests
+
+
+# Build and test packetbeat.
+cd $GOPATH/src/github.com/elastic/beats/packetbeat
+make
+./packetbeat --version
+make update
+make unit
+make system-tests 
+
+
+# Build and test metricbeat.
+cd $GOPATH/src/github.com/elastic/beats/metricbeat
+make
+./metricbeat --version
+make update
+make unit
+make system-tests | tee metricbeat.log
+echo &quot;FAIL: Test system/process output.&quot; &gt;&gt; expectedfail1
+grep &quot;FAIL:&quot; metricbeat.log | tee actuallyfail1
+if diff -u --ignore-all-space expectedfail1 actuallyfail1 ; then
+	echo &quot;Unexpected failures found!&quot;
+    exit 1
+fi
+
+
+# Build and test libbeat.
+cd $GOPATH/src/github.com/elastic/beats/libbeat
+make
+./libbeat --version
+make update
+make unit
+make system-tests
+
+find $GOPATH/src/github.com/elastic/beats/ -type f -iname &quot;*.py&quot; -print0 | xargs -0 sed -i &apos;s/max_timeout=10000/max_timeout=1000/g&apos;
+# Build and test heartbeat.
+cd $GOPATH/src/github.com/elastic/beats/heartbeat
+make
+./heartbeat --version
+make update
+make unit
+make system-tests
+
+
+# Build and test auditbeat.
+cd $GOPATH/src/github.com/elastic/beats/auditbeat
+make
+./auditbeat --version
+make update
+make unit
+make system-tests | tee auditbeat.log
+echo &quot;ERROR: Auditbeat starts and stops without error.&quot; &gt;&gt; expectedfail2
+grep &quot;ERROR:&quot; auditbeat.log | tee actuallyfail2
+if diff -u --ignore-all-space expectedfail2 actuallyfail2 ; then
+	echo &quot;Unexpected failures found!&quot;
+    exit 1
+fi
+
+
+# Verify that individual beats are running without error
+cd $GOPATH/src/github.com/elastic/beats/filebeat
+sudo chown root filebeat.yml
+sudo ./filebeat -e -c filebeat.yml -d &quot;publish&quot; &amp;
+sleep 5s
+sudo pgrep -d&quot; &quot; -f &quot;filebeat&quot; | sudo xargs kill || true
+
+cd $GOPATH/src/github.com/elastic/beats/packetbeat
+sudo chown root packetbeat.yml
+sudo ./packetbeat -e -c packetbeat.yml -d &quot;publish&quot; &amp;
+sleep 5s
+sudo pgrep -d&quot; &quot; -f &quot;packetbeat&quot; | sudo xargs kill || true
+
+cd $GOPATH/src/github.com/elastic/beats/metricbeat
+sudo chown root metricbeat.yml
+sudo ./metricbeat -e -c metricbeat.yml -d &quot;publish&quot; &amp;
+sleep 5s
+sudo pgrep -d&quot; &quot; -f &quot;metricbeat&quot; | sudo xargs kill || true
+
+cd $GOPATH/src/github.com/elastic/beats/heartbeat
+sudo chown root heartbeat.yml
+sudo ./heartbeat -e -c heartbeat.yml -d &quot;publish&quot; &amp;
+sleep 5s
+sudo pgrep -d&quot; &quot; -f &quot;heartbeat&quot; | sudo xargs kill || true
+
+cd $GOPATH/src/github.com/elastic/beats/auditbeat
+sudo chown root auditbeat.yml
+sudo ./auditbeat -e -c auditbeat.yml -d &quot;publish&quot; &amp;
+sleep 5s
+pgrep -d&quot; &quot; -f &quot;auditbeat&quot; | sudo xargs kill || true
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @ajakhade</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

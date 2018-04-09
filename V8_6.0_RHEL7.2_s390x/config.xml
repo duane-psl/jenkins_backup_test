@@ -1,0 +1,209 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <canRoam>true</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+export WORK_DIR=`pwd`
+#Installing Pre-requisties
+
+sudo yum install -y git subversion make gcc-c++ tar wget which bzip2
+
+#Clone depot_tools
+mkdir source_root
+cd $WORK_DIR/source_root
+git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+export PATH=$(pwd)/depot_tools:$PATH
+
+#Obtain the V8 source code
+cd $WORK_DIR/source_root
+export VPYTHON_BYPASS=&quot;manually managed python not supported by chrome operations&quot;
+
+fetch v8
+cd v8 
+git checkout 6.0.318
+gclient sync
+python gypfiles/gyp_v8
+
+#Build V8 Library and Shared Library
+make s390x -j4 werror=no
+make s390x -j4 library=shared werror=no
+
+# Cross checking generated files
+rm -rf include_headers_test.txt executables_test.txt lib_headers_test.txt
+cat &lt;&lt;EOT &gt;&gt; include_headers_test.txt
+DEPS
+OWNERS
+libplatform
+v8-debug.h
+v8-inspector-protocol.h
+v8-inspector.h
+v8-platform.h
+v8-profiler.h
+v8-testing.h
+v8-util.h
+v8-value-serializer-version.h
+v8-version-string.h
+v8-version.h
+v8.h
+v8config.h
+EOT
+
+cat &lt;&lt;EOT &gt;&gt; include_libplat_headers_test.txt
+DEPS
+libplatform-export.h
+libplatform.h
+v8-tracing.h
+EOT
+
+cat &lt;&lt;EOT &gt;&gt; executables_test.txt
+libicui18n.so
+libicuuc.so
+libv8.so
+libv8_libbase.so
+libv8_libplatform.so
+EOT
+
+cat &lt;&lt;EOT &gt;&gt; lib_headers_test.txt
+d8_js2c.stamp
+inspector
+js2c.stamp
+libv8.so
+libv8_base.a
+libv8_builtins_generators.a
+libv8_builtins_setup.a
+libv8_external_snapshot.a
+libv8_libbase.a
+libv8_libbase.so
+libv8_libplatform.a
+libv8_libplatform.so
+libv8_libsampler.a
+libv8_nosnapshot.a
+natives_blob.stamp
+v8.stamp
+v8_maybe_snapshot.stamp
+EOT
+
+ls include/ | tee include_headers.txt
+ls include/libplatform | tee include_libplat_headers.txt
+ls out/s390x.release/lib.target/ | tee executables.txt
+ls out/s390x.release/obj.target/src/ | tee lib_headers.txt
+cat include_headers.txt
+cat include_libplat_headers.txt
+cat executables.txt
+cat lib_headers.txt
+
+result_include_headers=`diff include_headers.txt include_headers_test.txt`
+ 
+if [ -z &quot;$result_include_headers&quot; ] ; then
+  echo &quot;include_headers are generated&quot;
+else
+  exit 1
+fi
+
+result_include_libplat_headers=`diff include_libplat_headers.txt include_libplat_headers_test.txt`
+ 
+if [ -z &quot;$result_include_libplat_headers&quot; ] ; then
+  echo &quot;include_libplatform_headers are generated&quot;
+else
+  exit 1
+fi
+
+result_executables=`diff executables.txt executables_test.txt`
+ 
+  if [ -z &quot;$result_executables&quot; ] ; then
+  echo &quot;executables are generated&quot;
+else
+  exit 1
+fi
+result_lib_headers=`diff lib_headers.txt lib_headers_test.txt`
+ 
+if [ -z &quot;$result_lib_headers&quot; ] ; then
+  echo &quot;lib_headers are generated&quot;
+else
+  exit 1
+fi
+
+#Install the V8 libraries and V8 header files
+sudo cp -vR include/* /usr/include/
+sudo chmod -f 644 /usr/include/libplatform/libplatform.h
+sudo chmod -f 644 /usr/include/v8*h 
+         
+sudo cp -v out/s390x.release/lib.target/lib*.so /usr/local/lib64/ 
+sudo chmod -f 755 /usr/local/lib64/libv8.so
+sudo cp -v out/s390x.release/obj.target/src/lib*.a /usr/local/lib64/
+
+ls out/s390x.release/obj.target/src/lib*.a
+
+
+ls out/s390x.release/obj.target/third_party/icu/lib*.a
+sudo cp -v out/s390x.release/obj.target/third_party/icu/lib*.a /usr/local/lib64/
+sudo chmod -f 755 /usr/local/lib64/libicu*.so
+sudo chmod -f 644 /usr/local/lib64/libv8*.a /usr/local/lib64/libicu*.a
+
+
+
+sudo /sbin/ldconfig -v
+
+# Verify version of shell
+$WORK_DIR/source_root/v8/out/s390x.release/v8_shell
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@salamani</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

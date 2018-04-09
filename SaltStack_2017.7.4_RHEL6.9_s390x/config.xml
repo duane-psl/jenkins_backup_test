@@ -1,0 +1,157 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 6</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+export homedir=`pwd`
+echo $homedir
+
+# Install build dependencies
+#Install dependencies
+sudo yum install -y git wget tar make bzip2 unzip gcc gcc-c++ make autoconf net-tools ssh sqlite-devel openldap-devel libxslt-devel openssl-devel libffi-devel openssl libtool libbz2-devel bzip2-devel.s390x
+
+# Python 2.7.14
+cd $homedir
+sudo yum install -y gcc gcc-c++ make ncurses patch wget tar bzip2-devel zlib-devel xz xz-devel readline-devel sqlite-devel tk-devel ncurses-devel gdbm-devel openssl-devel libdb-devel gdb
+sudo rm -rf Python-2.7.14 Python-2.7.14.tar.xz Python
+wget https://www.python.org/ftp/python/2.7.14/Python-2.7.14.tar.xz
+sudo tar -xvf Python-2.7.14.tar.xz
+sudo chown -R test:test Python-2.7.14
+cd Python-2.7.14
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+sudo make install
+
+
+# After installing Python in /usr/local, set the newly installed Python as default.
+export PATH=/usr/local/bin:$PATH
+sudo /usr/sbin/update-alternatives --install /usr/bin/python python /usr/local/bin/python 10
+sudo /usr/sbin/update-alternatives --display python
+python -V
+
+
+#Install pip
+cd $homedir
+#Install pip
+curl -o /tmp/get-pip.py https://bootstrap.pypa.io/get-pip.py
+sudo /usr/local/bin/python2.7 /tmp/get-pip.py
+sudo ln -s /usr/local/bin/pip /usr/bin/pip
+
+#Install required Python modules
+sudo pip install paramiko httplib2 passlib six patch &apos;django&lt;2.0&apos; call coverage==3.7.1 coveralls funcsigs pyzmq PyYAML pycrypto cryptography==2.0.3 msgpack-python jinja2 psutil futures tornado
+
+# Download source code
+cd $homedir
+git clone git://github.com/saltstack/salt
+cd salt        
+git checkout v2017.7.4
+          
+# Install saltstack and check version
+sudo pip install -e .
+sudo env PATH=$PATH python ./setup.py install
+
+# Configure Salt master and minion
+cd $homedir
+mkdir -p etc/salt/
+cp ./salt/conf/master ./salt/conf/minion etc/salt/
+cd etc/salt/ 
+
+#Edit config file master as shown below
+sed -i &apos;s/#user: root/user: root/g&apos; master
+sed -i &apos;s,#root_dir: /,&apos;&quot;root_dir: $homedir&quot;&apos;,&apos; master
+
+#Edit config file minion as shown below
+sed -i &apos;s/#master: salt/master: localhost/g&apos; minion
+sed -i &apos;s/#user: root/user: root/g&apos; minion
+sed -i &apos;s,#root_dir: /,&apos;&quot;root_dir: $homedir&quot;&apos;,&apos; minion
+
+
+#Start the master and minion, accept the minion&apos;s key, and verify your local Salt installation is working
+cd $homedir
+sudo env PATH=$PATH salt-master -c ./etc/salt -d 
+sudo env PATH=$PATH salt-minion -c ./etc/salt -d 
+sleep 1m
+sudo env PATH=$PATH salt-key -c ./etc/salt -L 
+sudo env PATH=$PATH salt-key -c ./etc/salt -A  -y
+sudo env PATH=$PATH salt -c ./etc/salt &apos;*&apos; test.ping || true
+
+
+# Check master, minion process
+ps -ef | grep salt
+
+# Unit and integration tests (optional)
+#cd /&lt;source_root&gt;/salt
+#sudo pip install git+https://github.com/saltstack/salt-testing.git#egg=SaltTesting
+#sudo pip install -r requirements/dev_python27.txt 
+#sudo ./setup.py test
+
+
+# **Note:** Test failures seen in the following modules can be ignore as these are not related to IBM z Systems:_ 
+#           _Module Tests, State Tests, Shell Tests, NetAPI Tests, Salt Unit Test_
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @gsalgaon</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

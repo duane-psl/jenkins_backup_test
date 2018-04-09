@@ -1,0 +1,270 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub17.04_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;keystone&quot;
+published_version=&quot;11.0.3&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	sudo apt-get update
+	available_version=$(sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+sudo apt-get update 
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get install -y mysql-server
+sudo apt-get install -y libpq-dev build-essential libncurses-dev git wget cmake gcc make tar libpcre3-dev bison scons libboost-dev libboost-program-options-dev openssl dh-autoreconf libssl-dev python-setuptools python-lxml curl python-ldap python-dev libxslt-dev net-tools libffi-dev apache2-dev python-mysqldb apache2 libapache2-mod-wsgi python-pkgconfig  python-psycopg2
+sudo easy_install pip    
+sudo pip install cryptography==2.0.3 mod_wsgi python-memcached functools32 python-openstackclient requests==2.10.0 pika==0.10.0
+ 
+sudo /usr/sbin/mysqld --initialize --user=mysql --datadir=/var/lib/mysql/data
+
+sudo mkdir -p  /var/log/mysql 
+sudo mkdir /var/run/mysqld 
+sudo chown -R mysql:mysql /var/run/mysqld
+#sudo chown -R mysql:adm /var/run/mysqld 
+
+# added in jenkins only to avoid job exiting
+export BUILD_ID=dontKillMe
+
+sudo /usr/bin/mysqld_safe --user=mysql &amp;
+sleep 120s
+
+ps -ef | grep mysql 
+
+#/usr/bin/mysqladmin -u root password &apos;root&apos;
+#/usr/bin/mysqladmin -u root -h 127.0.0.1 password &apos;root&apos;
+
+#cat &lt;&lt;EOT &gt;&gt; keystone_conf.sql
+#CREATE DATABASE keystone;
+#GRANT ALL PRIVILEGES ON keystone.* TO &apos;keystone&apos;@&apos;%&apos; IDENTIFIED BY &apos;keystone&apos;;
+#GRANT ALL PRIVILEGES ON keystone.* TO &apos;keystone&apos;@&apos;localhost&apos; IDENTIFIED BY &apos;keystone&apos;;
+#exit
+#EOT
+#mysql -u root -h 127.0.0.1 &quot;-proot&quot; &lt; keystone_conf.sql
+
+sudo /usr/bin/mysql -e &quot;CREATE DATABASE keystone&quot; 
+sudo /usr/bin/mysql -e &quot;GRANT ALL PRIVILEGES ON keystone.* TO &apos;keystone&apos;@&apos;%&apos; IDENTIFIED BY &apos;keystone&apos;&quot; 
+sudo /usr/bin/mysql -e &quot;GRANT ALL PRIVILEGES ON keystone.* TO &apos;keystone&apos;@&apos;localhost&apos; IDENTIFIED BY &apos;keystone&apos;&quot;
+
+cd ~
+git clone https://github.com/openstack/keystone.git
+cd keystone/
+git checkout 11.0.3
+sudo pip install -r requirements.txt
+sudo pip install -r test-requirements.txt 
+sudo python setup.py install
+
+sudo cp -r etc/ /etc/keystone
+cd /etc/keystone/
+sudo mv keystone.conf.sample keystone.conf
+sudo mv logging.conf.sample logging.conf
+export OS_KEYSTONE_CONFIG_DIR=/etc/keystone
+
+
+sudo sed -i &quot;714i connection = mysql://keystone:keystone@127.0.0.1/keystone&quot; /etc/keystone/keystone.conf
+sudo sed -i &quot;2834i provider = fernet&quot; /etc/keystone/keystone.conf
+
+keystone-manage db_sync 
+
+sudo useradd -m keystone
+cat /etc/passwd | grep keystone
+#sudo groupadd keystone
+sudo usermod -aG keystone keystone
+
+sudo mkdir /etc/keystone/fernet-keys
+sudo chown -R keystone:keystone fernet-keys
+sudo keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+sudo keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+
+keystone-manage bootstrap --bootstrap-password ADMIN_PASS \
+  --bootstrap-admin-url http://127.0.0.1:35357/v3/ \
+  --bootstrap-internal-url http://127.0.0.1:5000/v3/ \
+  --bootstrap-public-url http://127.0.0.1:5000/v3/ \
+  --bootstrap-region-id RegionOne
+  
+sudo sed -i &quot;\$a ServerName 127.0.0.1&quot; /etc/apache2/apache2.conf 
+
+cd /etc/apache2/
+sudo mkdir -p sites-available
+sudo mkdir -p sites-enabled
+
+cd sites-available/
+sudo touch wsgi-keystone.conf
+ 
+sudo cat &lt;&lt;EOT &gt;&gt; ~/wsgi-keystone.conf
+Listen 5000
+Listen 35357
+
+&lt;VirtualHost *:5000&gt;
+  WSGIDaemonProcess keystone-public processes=5 threads=1 user=keystone group=keystone display-name=%{GROUP}
+  WSGIProcessGroup keystone-public
+  WSGIScriptAlias / /usr/local/bin/keystone-wsgi-public
+  WSGIApplicationGroup %{GLOBAL}
+  WSGIPassAuthorization On
+  LimitRequestBody 114688
+  &lt;IfVersion &gt;= 2.4&gt;
+	ErrorLogFormat &quot;%{cu}t %M&quot;
+  &lt;/IfVersion&gt;
+  ErrorLog /var/log/apache2/keystone.log
+  CustomLog /var/log/apache2/keystone_access.log combined
+
+  &lt;Directory /usr/local/bin&gt;
+	  &lt;IfVersion &gt;= 2.4&gt;
+		  Require all granted
+	  &lt;/IfVersion&gt;
+	  &lt;IfVersion &lt; 2.4&gt;
+		  Order allow,deny
+		  Allow from all
+	  &lt;/IfVersion&gt;
+  &lt;/Directory&gt;
+&lt;/VirtualHost&gt;
+
+&lt;VirtualHost *:35357&gt;
+  WSGIDaemonProcess keystone-admin processes=5 threads=1 user=keystone group=keystone display-name=%{GROUP}
+  WSGIProcessGroup keystone-admin
+  WSGIScriptAlias / /usr/local/bin/keystone-wsgi-admin
+  WSGIApplicationGroup %{GLOBAL}
+  WSGIPassAuthorization On
+  LimitRequestBody 114688
+  &lt;IfVersion &gt;= 2.4&gt;
+	ErrorLogFormat &quot;%{cu}t %M&quot;
+  &lt;/IfVersion&gt;
+  ErrorLog /var/log/apache2/keystone.log
+  CustomLog /var/log/apache2/keystone_access.log combined
+
+  &lt;Directory /usr/local/bin&gt;
+	  &lt;IfVersion &gt;= 2.4&gt;
+		  Require all granted
+	  &lt;/IfVersion&gt;
+	  &lt;IfVersion &lt; 2.4&gt;
+		  Order allow,deny
+		  Allow from all
+	  &lt;/IfVersion&gt;
+  &lt;/Directory&gt;
+&lt;/VirtualHost&gt;
+
+Alias /identity /usr/local/bin/keystone-wsgi-public
+&lt;Location /identity&gt;
+  SetHandler wsgi-script
+  Options +ExecCGI
+
+  WSGIProcessGroup keystone-public
+  WSGIApplicationGroup %{GLOBAL}
+  WSGIPassAuthorization On
+&lt;/Location&gt;
+
+Alias /identity_admin /usr/local/bin/keystone-wsgi-admin
+&lt;Location /identity_admin&gt;
+  SetHandler wsgi-script
+  Options +ExecCGI
+
+  WSGIProcessGroup keystone-admin
+  WSGIApplicationGroup %{GLOBAL}
+  WSGIPassAuthorization On
+&lt;/Location&gt;
+EOT
+sudo cp ~/wsgi-keystone.conf .
+sudo ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
+
+sudo service apache2 start 
+
+
+export OS_USERNAME=admin 
+export OS_PASSWORD=ADMIN_PASS 
+export OS_PROJECT_NAME=admin
+export OS_USER_DOMAIN_NAME=Default 
+export OS_PROJECT_DOMAIN_NAME=Default 
+export OS_AUTH_URL=http://127.0.0.1:35357/v3 
+export OS_IDENTITY_API_VERSION=3
+
+ps -ef
+
+openstack service list
+
+sleep 30s
+
+openstack token issue
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @faizakht</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

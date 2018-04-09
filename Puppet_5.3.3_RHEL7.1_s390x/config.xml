@@ -1,0 +1,274 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel7.1_root-node</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 3</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Set the below parameters manually
+package_name=&quot;puppet&quot;
+published_version=&quot;5.3.3&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+cd /home/test
+
+export WORK_DIR=`pwd`
+echo $WORK_DIR
+cat /etc/os*
+export PATH=/usr/local/bin/:$PATH
+sudo chmod -R 777 /home/test 
+whoami
+sudo touch puppetinstall.sh  
+sudo chmod +x puppetinstall.sh
+sudo bash -c &quot;cat &gt; puppetinstall.sh&quot; &lt;&lt;&apos;finish&apos;
+source /home/test/.bashrc
+sudo yum install -y gcc-c++ readline-devel tar openssl unzip libyaml-devel PackageKit-cron openssl-devel make git wget sqlite-devel glibc-common hostname                   
+export WORK_DIR=`pwd`
+echo $WORK_DIR
+whoami
+# Download and Install ruby 2.2.2
+cd $WORK_DIR
+wget http://cache.ruby-lang.org/pub/ruby/2.2/ruby-2.2.2.tar.gz
+tar -xvf ruby-2.2.2.tar.gz
+cd ruby-2.2.2
+./configure
+make
+sudo make install
+
+# Download and Install rubygems 2.2.2
+cd $WORK_DIR
+wget https://rubygems.org/rubygems/rubygems-2.2.2.tgz 
+tar -xvf rubygems-2.2.2.tgz 
+cd rubygems-2.2.2
+sudo /usr/local/bin/ruby setup.rb 
+
+# Install bundler
+cd $WORK_DIR
+sudo /usr/local/bin/gem install bundler rake-compiler  
+
+#Install Puppet
+cd $WORK_DIR
+sudo /usr/local/bin/gem install puppet -v 5.3.3
+#Locate the $confdir by command
+sudo chmod 755 /usr/local/lib
+export PATH=/usr/local/bin/:$PATH
+confdir=`puppet master --configprint confdir` 
+echo $confdir
+mkdir -p $confdir
+
+#Create necessary directories and files in $confdir
+mkdir $confdir/modules
+mkdir $confdir/manifests
+cd $confdir
+touch puppet.conf
+wget https://raw.githubusercontent.com/puppetlabs/puppet/master/conf/auth.conf
+mkdir -p $confdir/opt/puppetlabs/puppet
+mkdir -p $confdir/var/log/puppetlabs
+pwd
+
+#Create &quot;puppet&quot; user and group
+whereis chpasswd
+sudo useradd -d /home/puppet -p puppet -m -s /bin/bash puppet
+sudo /usr/local/bin/puppet resource group puppet ensure=present
+echo puppet:puppet | sudo chpasswd
+
+masterhost=$(hostname -f)
+echo $masterhost
+masterip=$(hostname -i)
+echo $masterip
+
+
+# Add sample puppet.conf
+sudo bash -c &quot;cat &gt; puppet.conf&quot; &lt;&lt;&apos;EOF&apos; 
+[main]
+          logdir = $confdir/var/log/puppetlabs
+          basemodulepath = $confdir/modules
+          server = master.myhost.com
+          user  = puppet
+          group = puppet
+          pluginsync = false
+     [master]
+          certname = master.myhost.com
+          autosign = true
+      [agent]
+          certname = master.myhost.com
+          report = true
+          pluginsync = false
+EOF
+#[agent]
+#          certname = master.myhost.com it&apos;s orignal value is agent.myhost.com
+sudo sed -ie &quot;s/master.myhost.com/$masterhost/&quot; puppet.conf 
+
+sudo sh -c &quot;echo &apos;$masterip  $masterhost&apos; &gt;&gt; /etc/hosts&quot; 
+nohup puppet master --verbose --no-daemonize &amp;
+
+sleep 30s
+sleep 60s
+nohup puppet agent --test &amp;
+sleep 60s
+ps -ef | grep puppet
+
+sudo chmod -R 777 /home/puppet
+
+finish
+su -c whoami test
+su -c ./puppetinstall.sh test
+pwd
+
+#Testing
+cd /home/puppet
+su -c whoami puppet
+
+echo &quot;puppet&quot; | su -c &apos;git clone git://github.com/puppetlabs/puppet&apos; puppet
+cd puppet
+echo &quot;puppet&quot; | su -c &apos;git checkout 5.3.3&apos; puppet
+echo &quot;puppet&quot; | su -c &apos;bundle install --path .bundle/gems/&apos; puppet
+
+cd /home/puppet/puppet
+sudo touch rootuser_tests.sh  
+sudo chmod +x rootuser_tests.sh
+pwd
+#Execute testcases as root user
+ls rootuser_tests.sh
+sudo bash -c &quot;cat &gt; rootuser_tests.sh&quot; &lt;&lt;&apos;EOF&apos;
+#!/bin/bash
+	set -e
+		
+	echo &quot;Running Unit testcases as root user&quot;
+	declare -a unittests1
+	unittests1=$(ls spec/unit|egrep -v &quot;ssl|face|indirector|network&quot;)
+	unittest_list1=($unittests1)
+	for i in &quot;${unittest_list1[@]}&quot;
+	do
+	  bundle exec rspec &quot;spec/unit/$i&quot;
+	done
+		
+	echo &quot;Running Integration testcases as root user&quot;
+	declare -a integration1
+	integration1=$(ls spec/integration|egrep &quot;provider|type&quot;)
+	integration_list1=($integration1)
+	for j in &quot;${integration_list1[@]}&quot;
+	do
+	  bundle exec rspec --exclude-pattern ./spec/integration/provider/service/systemd_spec.rb &quot;spec/integration/$j&quot;
+	done
+EOF
+cat rootuser_tests.sh
+path_pwd=$(pwd)
+export LC_ALL=&quot;en_US.UTF8&quot;
+./rootuser_tests.sh 
+echo $LC_ALL
+
+
+#Execute testcases as puppet user
+cd /home/puppet/puppet
+sudo touch puppetuser_tests.sh
+sudo chmod +x puppetuser_tests.sh
+sudo bash -c &quot;cat &gt; puppetuser_tests.sh&quot; &lt;&lt;&apos;EOF&apos;
+#!/bin/bash
+	set -e
+		
+	echo &quot;Running Unit testcases as puppet user&quot;
+	declare -a unittests2
+	unittests2=$(ls spec/unit|egrep &quot;ssl|face|indirector|network&quot;)
+	unittest_list2=($unittests2)
+	for i in &quot;${unittest_list2[@]}&quot;
+	do
+		bundle exec rspec &quot;spec/unit/$i&quot;
+	done
+		
+	echo &quot;Running Integration testcases as puppet user&quot;
+	declare -a integration2
+	integration2=$(ls spec/integration|egrep -v &quot;data_binding_spec.rb|provider|type&quot;)
+	integration_list2=($integration2)
+	for j in &quot;${integration_list2[@]}&quot;
+	do
+	  bundle exec rspec &quot;spec/integration/$j&quot;
+	done
+EOF
+cat puppetuser_tests.sh
+echo &quot;puppet&quot; | su -c ./puppetuser_tests.sh puppet
+puppet --version
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

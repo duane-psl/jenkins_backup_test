@@ -1,0 +1,135 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>export WRK_DIR=`pwd`
+
+# Install depedencies
+sudo apt-get update
+sudo apt-get install -y wget git unzip curl tar
+
+
+#Install AdoptOpenjdk
+export WRK_DIR=`pwd`
+wget https://github.com/AdoptOpenJDK/openjdk9-releases/releases/download/jdk-9%2B181/OpenJDK9_s390x_Linux_jdk-9.181.tar.gz
+tar -xvf OpenJDK9_s390x_Linux_jdk-9.181.tar.gz
+export JAVA_HOME=$WRK_DIR/jdk-9+181/ 
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+# Download and extract SonarQube 7.0 and sonar-scanner-cli 3.0.3
+export WRK_DIR=`pwd`
+wget https://sonarsource.bintray.com/Distribution/sonarqube/sonarqube-7.0.zip
+unzip sonarqube-7.0.zip
+wget https://sonarsource.bintray.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-3.0.3.778-linux.zip
+unzip sonar-scanner-cli-3.0.3.778-linux.zip
+rm -rf sonarqube-7.0.zip sonar-scanner-cli-3.0.3.778-linux.zip
+
+cd $WRK_DIR/sonarqube-7.0/lib/
+java -jar sonar-application-7.0.jar &gt; sonar_service_status.log &amp;
+
+sonarqube_is_up=false
+
+until [ $sonarqube_is_up == true ]; do
+  sleep 5m
+  if grep &quot;HTTP connector enabled on port 9000&quot; $WRK_DIR/sonarqube-7.0/logs/web.log &amp;&amp; \
+  grep &quot;SonarQube is up&quot; $WRK_DIR/sonarqube-7.0/logs/sonar.log ; then sonarqube_is_up=true; fi
+done
+
+# Testing
+cd $WRK_DIR
+git clone https://github.com/khatilov/sonar-examples.git
+
+cd $WRK_DIR
+sed -i &quot;47d&quot; sonar-scanner-3.0.3.778-linux/bin/sonar-scanner
+sed -i &apos;47 i use_embedded_jre=false&apos; sonar-scanner-3.0.3.778-linux/bin/sonar-scanner
+
+# Run Java scanner
+cd $WRK_DIR/sonar-examples/projects/languages/java/sonar-runner/java-sonar-runner-simple/
+$WRK_DIR/sonar-scanner-3.0.3.778-linux/bin/sonar-scanner
+curl http://localhost:9000/dashboard/index/java-sonar-runner-simple
+
+# Run Javacript scanner
+cd $WRK_DIR/sonar-examples/projects/languages/javascript/javascript-sonar-runner/
+$WRK_DIR/sonar-scanner-3.0.3.778-linux/bin/sonar-scanner
+curl http://localhost:9000/dashboard/index/org.codehaus.sonar:javascript-sonar-runner
+
+# Run Python scanner
+cd $WRK_DIR/sonar-examples/projects/languages/python/python-sonar-runner
+$WRK_DIR/sonar-scanner-3.0.3.778-linux/bin/sonar-scanner
+curl http://localhost:9000/dashboard/index/org.codehaus.sonar:example-python-sonar-runner
+
+# Run PHP scanner
+cd $WRK_DIR/sonar-examples/projects/languages/php/php-sonar-runner
+$WRK_DIR/sonar-scanner-3.0.3.778-linux/bin/sonar-scanner
+curl http://localhost:9000/dashboard/index/org.codehaus.sonar:php-sonar-runner
+
+
+pgrep -d&quot; &quot; -f &quot;sonar&quot; | sudo xargs kill ||true
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@kbhute</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

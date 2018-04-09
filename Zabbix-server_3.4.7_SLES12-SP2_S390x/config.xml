@@ -1,0 +1,208 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-SP2_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 4</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;zabbix-server&quot;
+published_version=&quot;3.4.7&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+#-------------------------------------------------------------------------------------
+export WORK_DIR=`pwd`
+
+#Install dependencies
+sudo zypper update -y
+sudo zypper install -y wget tar curl vim gcc make net-snmp net-snmp-devel mariadb libmysqld-devel  net-tools git apache2 apache2-devel apache2-mod_php5 php5 php5-mysql php5-xmlreader php5-xmlwriter php5-gd php5-bcmath php5-mbstring php5-ctype php5-sockets php5-gettext libcurl-devel libxml2  libxml2-devel php5-ldap libevent-devel pcre-devel
+
+#Edit httpd.conf
+sudo cp /etc/apache2/httpd.conf /etc/apache2/httpd.conf.old
+sudo bash -c &apos;echo -e &quot;ServerName localhost&quot; &gt;&gt;  /etc/apache2/httpd.conf&apos;
+sudo bash -c &apos;echo -e &quot;AddType application/x-httpd-php .php&quot; &gt;&gt;  /etc/apache2/httpd.conf&apos;
+sudo bash -c &apos;echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf&apos;
+sudo bash -c &apos;echo -e &quot; DirectoryIndex index.php &quot; &gt;&gt;  /etc/apache2/httpd.conf&apos;
+sudo bash -c &apos;echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf&apos;
+sudo bash -c &apos;echo -e &quot;LoadModule php5_module /usr/lib64/apache2/mod_php5.so&quot; &gt;&gt;  /etc/apache2/httpd.conf&apos;
+sudo diff -u /etc/apache2/httpd.conf.old /etc/apache2/httpd.conf || true
+
+#Download and install Zabbix server
+cd $WORK_DIR
+sudo rm -rf zabbix-3.4.7
+wget https://excellmedia.dl.sourceforge.net/project/zabbix/ZABBIX%20Latest%20Stable/3.4.7/zabbix-3.4.7.tar.gz -O zabbix-3.4.7.tar.gz
+tar -xvf zabbix-3.4.7.tar.gz
+cd zabbix-3.4.7
+./configure --enable-server --with-mysql --enable-ipv6 --with-net-snmp --with-libcurl --with-libxml2
+make
+sudo make install
+
+#Create Zabbix user
+sudo groupadd zabbix
+sudo useradd -g zabbix zabbix
+
+#Install Zbbix web interface
+cd $WORK_DIR/zabbix-3.4.7/frontends/php/
+sudo mkdir -p /srv/www/htdocs/zabbix  
+sudo cp -rf * /srv/www/htdocs/zabbix           
+cd /srv/www/htdocs/zabbix
+sudo chown -R zabbix:zabbix conf
+
+#Start httpd server and Mysql server
+sudo /usr/sbin/httpd -D BACKGROUND 
+sleep 10s
+sudo mkdir -p  /var/log/mysql
+sudo /usr/bin/mysql_install_db --user=mysql
+sleep 10s
+sudo /usr/bin/mysqld_safe --user=mysql &amp;  
+sleep 10s
+
+#Create database and grant privileges to Zabbix user
+sudo /usr/bin/mysql -e &quot;create database zabbix&quot;
+sudo /usr/bin/mysql -e &quot;create user &apos;zabbix&apos;@&apos;localhost&apos; &quot;
+sudo /usr/bin/mysql -e &quot;grant all privileges on zabbix.* to &apos;zabbix&apos;@&apos;localhost&apos;&quot;
+
+#Create database schema and insert dataset
+cd $WORK_DIR/zabbix-3.4.7/database/mysql
+mysql -uzabbix  zabbix &lt; schema.sql
+mysql -uzabbix  zabbix &lt; images.sql
+mysql -uzabbix  zabbix &lt; data.sql
+	  
+#Edit php.ini
+filename=/etc/php5/apache2/php.ini
+cp $filename $HOME/bkup
+sudo -E sed -i &apos;s/max_execution_time = 30/max_execution_time = 300/g&apos; $filename
+sudo -E sed -i &apos;s/max_input_time = 60/max_input_time = 300/g&apos; $filename
+sudo -E sed -i &apos;s/post_max_size = 8M/post_max_size = 16M/g&apos; $filename
+sudo -E sed -i &quot;s/date.timezone = &apos;UTC&apos;/date.timezone = &apos;Asia\/Kolkata&apos;/g&quot; $filename
+diff -u $HOME/bkup $filename || true
+
+#Start Zabbix server
+export PATH=$PATH:/usr/local/sbin/
+zabbix_server
+
+#Check if Zabbix server successfully started. Fail otherwise
+if [ &quot;$(ps -aef | grep &apos;zabbix_server&apos; | wc -l)&quot; = &quot;1&quot; ]; then
+	echo &quot;Zabbix server not started!&quot;
+    exit 1
+fi
+
+#Restart httpd server
+sudo httpd -k restart 
+
+#Store expected setup page
+cd $HOME
+cat &lt;&lt;&apos;EOF&apos; &gt; expected_setup
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+        &lt;head&gt;
+                &lt;meta http-equiv=&quot;X-UA-Compatible&quot; content=&quot;IE=Edge&quot;/&gt;
+                &lt;meta charset=&quot;utf-8&quot; /&gt;
+                &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+                &lt;meta name=&quot;Author&quot; content=&quot;Zabbix SIA&quot; /&gt;
+                &lt;title&gt;Installation&lt;/title&gt;
+                &lt;link rel=&quot;icon&quot; href=&quot;favicon.ico&quot;&gt;
+                &lt;link rel=&quot;apple-touch-icon-precomposed&quot; sizes=&quot;76x76&quot; href=&quot;img/apple-touch-icon-76x76-precomposed.png&quot;&gt;
+                &lt;link rel=&quot;apple-touch-icon-precomposed&quot; sizes=&quot;120x120&quot; href=&quot;img/apple-touch-icon-120x120-precomposed.png&quot;&gt;
+                &lt;link rel=&quot;apple-touch-icon-precomposed&quot; sizes=&quot;152x152&quot; href=&quot;img/apple-touch-icon-152x152-precomposed.png&quot;&gt;
+                &lt;link rel=&quot;apple-touch-icon-precomposed&quot; sizes=&quot;180x180&quot; href=&quot;img/apple-touch-icon-180x180-precomposed.png&quot;&gt;
+                &lt;link rel=&quot;icon&quot; sizes=&quot;192x192&quot; href=&quot;img/touch-icon-192x192.png&quot;&gt;
+                &lt;meta name=&quot;csrf-token&quot; content=&quot;&quot;/&gt;
+                &lt;meta name=&quot;msapplication-TileImage&quot; content=&quot;img/ms-tile-144x144.png&quot;&gt;
+                &lt;meta name=&quot;msapplication-TileColor&quot; content=&quot;#d40000&quot;&gt;
+                &lt;meta name=&quot;msapplication-config&quot; content=&quot;none&quot;/&gt;
+&lt;link rel=&quot;stylesheet&quot; type=&quot;text/css&quot; href=&quot;styles/blue-theme.css&quot; /&gt;
+&lt;script src=&quot;js/browsers.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;jsLoader.php?ver=3.4.7&amp;amp;lang=en_gb&quot;&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body&gt;&lt;div class=&quot;article&quot;&gt;&lt;form method=&quot;post&quot; action=&quot;setup.php&quot; accept-charset=&quot;utf-8&quot;&gt;&lt;input type=&quot;hidden&quot; id=&quot;form_refresh&quot; name=&quot;form_refresh&quot; value=&quot;1&quot;&gt;&lt;div class=&quot;setup-container&quot;&gt;&lt;div class=&quot;setup-left&quot;&gt;&lt;div class=&quot;signin-logo&quot;&gt;&lt;/div&gt;&lt;ul&gt;&lt;li class=&quot;setup-left-current&quot;&gt;Welcome&lt;/li&gt;&lt;li&gt;Check of pre-requisites&lt;/li&gt;&lt;li&gt;Configure DB connection&lt;/li&gt;&lt;li&gt;Zabbix server details&lt;/li&gt;&lt;li&gt;Pre-installation summary&lt;/li&gt;&lt;li&gt;Install&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;&lt;div class=&quot;setup-right&quot;&gt;&lt;div class=&quot;setup-right-body&quot;&gt;&lt;div class=&quot;setup-title&quot;&gt;&lt;span&gt;Welcome to&lt;/span&gt;Zabbix 3.4&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;setup-footer&quot;&gt;&lt;div&gt;&lt;button type=&quot;submit&quot; id=&quot;next_0&quot; name=&quot;next[0]&quot; value=&quot;Next step&quot;&gt;Next step&lt;/button&gt;&lt;button type=&quot;submit&quot; id=&quot;back_0&quot; name=&quot;back[0]&quot; value=&quot;Back&quot; class=&quot;btn-alt float-left&quot; disabled=&quot;disabled&quot;&gt;Back&lt;/button&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/form&gt;&lt;div class=&quot;signin-links&quot;&gt;Licensed under &lt;a target=&quot;_blank&quot; class=&quot;grey link-alt&quot; href=&quot;http://www.zabbix.com/license.php&quot;&gt;GPL v2&lt;/a&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;footer&quot;&gt;Zabbix 3.4.7. &amp;copy; 2001&amp;ndash;2018, &lt;a class=&quot;grey link-alt&quot; target=&quot;_blank&quot; href=&quot;http://www.zabbix.com/&quot;&gt;Zabbix SIA&lt;/a&gt;&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;
+EOF
+
+#Get index page and compare with expected. Fail if difference found
+curl http://127.0.0.1:80/zabbix/setup.php &gt;setup
+diff -u -b -B setup expected_setup
+
+#Workaround hudson error
+sudo pkill zabbix
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@cgopi</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,223 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel6.9-8192</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 3 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+package_name=&quot;drupal&quot;
+published_version=&quot;8.4.5&quot;
+
+available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+PRETTY_NAME=&quot;Red Hat Enterprise Linux Server release 6.9 (Santiago)&quot;
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo for $PRETTY_NAME.&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+#-----------------------------------------------------------------------------------------
+export work_dir=`pwd`
+export DEBIAN_FRONTEND=noninteractive
+cat /etc/red*
+
+sudo yum install -y httpd git wget net-tools make gcc gcc-c++ openssl openssl-devel libtool autoconf make pcre pcre-devel libxml2 libxml2-devel expat-devel which httpd-devel openssh  openssl-libs libicu-devel libxslt-devel libcurl-devel  libvpx-devel libjpeg-devel libpng-devel libXpm-devel patch    
+
+###Mysql
+# Install dependencies
+sudo yum install -y git gcc gcc-c++ make cmake bison ncurses-devel util-linux tar zip wget zlib-devel bzip2.s390x libtool.s390x
+cd $work_dir
+wget http://ftp.gnu.org/gnu/gcc/gcc-4.8.2/gcc-4.8.2.tar.bz2
+bunzip2  gcc-4.8.2.tar.bz2
+tar xvf gcc-4.8.2.tar
+cd gcc-4.8.2/
+./contrib/download_prerequisites
+mkdir build
+cd build
+../configure --disable-multilib --disable-checking --enable-languages=c,c++ --enable-multiarch --enable-shared --enable-threads=posix --without-included-gettext --with-system-zlib --prefix=/opt/gcc4.8
+make
+sudo make install
+export PATH=/opt/gcc4.8/bin:$PATH
+export LD_LIBRARY_PATH=/opt/gcc4.8/lib64/
+sudo cp /opt/gcc4.8/lib64/libstdc++.so.6 /usr/lib64/
+gcc --version
+
+
+# Build and install MySQL 
+cd $work_dir
+git clone git://github.com/mysql/mysql-server.git
+cd mysql-server
+git checkout tags/mysql-5.7.21
+cmake -DCMAKE_C_COMPILER=/opt/gcc4.8/bin/gcc -DCMAKE_CXX_COMPILER=/opt/gcc4.8/bin/g++ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=.
+gmake
+sudo gmake install -e LD_LIBRARY_PATH=/opt/gcc4.8/lib64/
+
+
+			
+###PHP
+
+    cd $work_dir
+    wget http://www.php.net/distributions/php-7.0.23.tar.gz  
+    tar xvzf php-7.0.23.tar.gz 	
+	cd php-7.0.23
+   ./configure --with-apxs2=/usr/sbin/apxs --without-pcre-jit --with-openssl --enable-soap --with-libxml-dir=/usr/lib64 --with-mysqli --with-gd --with-jpeg-dir=/usr/include/jpeglib.h --with-png-dir --with-pdo_mysql --with-curl --enable-mbstring --enable-intl --enable-zip --with-xsl
+    make   
+    sudo make install
+    sudo cp $work_dir/php-7.0.23/php.ini-development /usr/local/php/php.ini 
+    export PATH=$PATH:/usr/local/php/bin/
+	php -v
+    	
+###Install Composer
+cd $work_dir
+curl -sS https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+chmod +x /usr/local/bin/composer
+export PATH=$PATH:/usr/local/bin/
+composer -V
+
+
+# modifying Apache configuration file
+# modifying Apache configuration file
+sudo echo -e &quot;@@ -301,7 +301,7 @@
+ #
+ &lt;Directory /&gt;
+     Options FollowSymLinks
+-    AllowOverride None
++    AllowOverride All
+ &lt;/Directory&gt;
+
+ #
+@@ -335,7 +335,7 @@
+ # It can be &quot;All&quot;, &quot;None&quot;, or any combination of the keywords:
+ #   Options FileInfo AuthConfig Limit
+ #
+-    AllowOverride None
++    AllowOverride All
+
+ #
+ # Controls who can get stuff from this server.
+@@ -1007,3 +1007,10 @@
+ #    ErrorLog logs/dummy-host.example.com-error_log
+ #    CustomLog logs/dummy-host.example.com-access_log common
+ #&lt;/VirtualHost&gt;
++ServerName localhost
++AddType application/x-httpd-php .php
++&lt;Directory /&gt;
++DirectoryIndex index.php index.html index.var
++&lt;/Directory&gt;
++LoadModule rewrite_module /usr/lib64/httpd/modules/mod_rewrite.so
++LoadModule php7_module        /usr/lib64/httpd/modules/libphp7.so&quot; &gt;&gt; patch1
+
+sudo patch /etc/httpd/conf/httpd.conf &lt; patch1
+	
+
+# Post installation setup 
+if !(getent passwd mysql); then
+ sudo useradd mysql
+fi
+
+cd /usr/local/mysql
+sudo chown -R mysql .
+sudo chgrp -R mysql .
+
+cd /usr/local/mysql/bin
+sudo ./mysqld  --initialize-insecure --user=mysql &amp;
+sleep 30
+sudo ./mysqld_safe --user=mysql &amp;
+sleep 30
+	
+#Create Drupal database
+cd /usr/local/mysql/bin
+sudo ./mysql -e &quot;create database drupal&quot; 
+sudo ./mysql -e &quot;create user &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos;&quot; 
+sudo ./mysql -e &quot;grant all privileges on drupal.* to &apos;drupal&apos;@&apos;localhost&apos; identified by &apos;drupal&apos; with GRANT OPTION&quot;
+
+# Download and install Drupal
+cd $work_dir
+wget https://ftp.drupal.org/files/projects/drupal-8.4.5.tar.gz
+tar -zxvf drupal-8.4.5.tar.gz 
+sudo mkdir -p /var/www/html/Drupal 
+cd drupal-8.4.5
+sudo mv * .htaccess .csslintrc .editorconfig .eslintignore .eslintrc.json .gitattributes /var/www/html/Drupal
+cd /var/www/html/Drupal
+composer install
+
+#Set permissions
+sudo mkdir sites/default/files 
+sudo chmod a+w sites/default/files 
+sudo chmod a+w sites/default 
+sudo cp sites/default/default.settings.php sites/default/settings.php 
+sudo chmod a+w sites/default/settings.php 
+sudo cp /home/test/work/Drupal_8.4.3/settings.php sites/default/settings.php
+
+
+sudo httpd -k restart
+cd /usr/local/mysql/bin
+sudo ./mysql -u drupal -pdrupal drupal &lt; /home/test/work/Drupal_8.4.3/drupal.sql
+sleep 60s
+wget -q  http://127.0.0.1:80/Drupal -O - | grep Welcome</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

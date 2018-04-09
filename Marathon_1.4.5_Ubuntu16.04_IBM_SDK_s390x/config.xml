@@ -1,0 +1,140 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_ubuntu16.04</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 0</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 0</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Install dependencies for Marathon and Mesos
+sudo apt-get update
+sudo apt-get install -y git tar wget openjdk-8-jdk patch libsvn-dev libcurl4-nss-dev
+#libsvn-dev and libcurl4-nss-dev are dependencies of mesos
+
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/java/8.0.4.10/linux/s390x/ibm-java-sdk-8.0-4.10-s390x-archive.bin
+wget https://raw.githubusercontent.com/zos-spark/scala-workbench/master/files/installer.properties.java
+tail -n +3 installer.properties.java | tee installer.properties
+cat installer.properties
+chmod +x ibm-java-sdk-8.0-4.10-s390x-archive.bin
+sudo ./ibm-java-sdk-8.0-4.10-s390x-archive.bin -r installer.properties
+java -version
+
+# Set environment variables
+export JAVA_HOME=/opt/ibm/java
+export PATH=$JAVA_HOME/bin:$PATH
+
+java -version
+
+# Install sbt
+wget https://dl.bintray.com/sbt/native-packages/sbt/0.13.11/sbt-0.13.11.tgz
+tar -zxvf sbt-0.13.11.tgz
+export WRKDIR=`pwd`
+export PATH=$PWD/sbt/bin:$PATH
+export SBT_OPTS=&quot;-Xmx4g&quot;
+
+export MOUNT_DIR=/home/test/work/Mesos_for_Marathon/Ub16.04/IBM
+ls $MOUNT_DIR
+#Copy all the required binaries.
+sudo cp $MOUNT_DIR/libmesos-1.2.0.so /usr/local/lib/
+sudo cp $MOUNT_DIR/libmesos.la /usr/local/lib/
+sudo cp $MOUNT_DIR/libmesos.so /usr/local/lib/
+sudo cp -r $MOUNT_DIR/mesos /usr/local/lib/
+
+
+# Build Marathon
+git clone https://github.com/mesosphere/marathon.git
+cd marathon
+git checkout v1.4.5
+sbt assembly
+./bin/build-distribution
+
+# Start Zookeper service
+cd $WRKDIR
+git clone https://github.com/apache/mesos
+cd mesos/
+git checkout 1.2.0
+cd 3rdparty/
+tar zxf zookeeper-3.4.8.tar.gz
+ls
+cd zookeeper-3.4.8
+sudo cp conf/zoo_sample.cfg conf/zoo.cfg
+sudo env PATH=$PATH ./bin/zkServer.sh start 
+sleep 20
+cd $WRKDIR
+
+# Start Marathon service
+cd marathon
+sudo env PATH=$PATH nohup ./bin/start --master local --zk zk://127.0.0.1:2181/marathon &amp;
+sleep 100
+wget http://127.0.0.1:8080
+
+sleep 60s
+ps -aef 
+
+pgrep -d&quot; &quot; -f &quot;marathon&quot; | sudo xargs kill;
+
+sleep 20s
+ps -aef </command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@preeti.khorjuvenkar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,154 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@3.0.1">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <url>https://github.com/apache/cassandra.git</url>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>cassandra-2.2.5</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions>
+      <hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+        <relativeTargetDir>cassandra</relativeTargetDir>
+      </hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+    </extensions>
+  </scm>
+  <assignedNode>dc2_sl12_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo zypper install  -y git \
+  git-core \
+  which \
+  java-1_7_0-openjdk-devel \
+  libstdc++-devel \
+  gcc-c++ \
+  make \
+  automake \
+  autoconf \
+  libtool \
+  tar \
+  wget \
+  patch \
+  words \
+  pkg-config \
+  libXt-devel \
+  libX11-devel \
+  unzip \
+  xorg-x11-proto-devel \
+  xorg-x11-devel \
+  alsa-devel \
+  cups-devel \
+  libffi48-devel \
+  libstdc++6-locale \
+  glibc-locale
+
+unset JAVA_TOOL_OPTIONS
+export LANG=&quot;en_US.UTF-8&quot;
+export JAVA_TOOL_OPTIONS=&quot;-Dfile.encoding=UTF8&quot;
+
+wget http://archive.apache.org/dist/ant/binaries/apache-ant-1.9.6-bin.tar.gz
+tar -xvf apache-ant-1.9.6-bin.tar.gz
+cd apache-ant-1.9.6
+export ANT_HOME=`pwd`
+cd bin
+export PATH=$PATH:`pwd`
+
+
+cd /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x
+rm -rf snappy-java
+  git clone https://github.com/xerial/snappy-java.git
+  cd snappy-java
+  git checkout develop
+  export JAVA_HOME=/usr/lib64/jvm/java-1.7.0
+  make IBM_JDK_7=1 USE_GIT=1 GIT_SNAPPY_BRANCH=1.1.4 GIT_REPO_URL=https://github.com/google/snappy.git
+
+cd /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x/cassandra
+rm ./lib/snappy-java-1.1.1.7.jar
+cp /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x/snappy-java/target/snappy-java-1.1.3-SNAPSHOT.jar ./lib/snappy-java-1.1.3.jar
+
+cd /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x
+git clone https://github.com/java-native-access/jna.git
+cd jna
+ant 
+cp /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x/jna/build/jna.jar  /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x/cassandra/lib/jna.jar
+rm /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x/cassandra/lib/jna-4.0.0.jar
+
+cd /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x/cassandra
+sed &apos;s/240000/24000000/&apos; build.xml
+sed &apos;s/600000/60000000/&apos; build.xml
+
+echo &quot;key_cache_size_in_mb: 16&quot; &gt;&gt; /home/test/workspace/ApacheCassandra2.2.5_SLES12_s390x/cassandra/test/conf/cassandra.yaml
+
+ant</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @gsalgaon</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

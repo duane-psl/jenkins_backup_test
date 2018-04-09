@@ -1,0 +1,122 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>ravi_rh7.4</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+export WORK_DIR=`pwd`
+
+# Install the build dependencies
+sudo yum install -y curl git wget tar gcc which
+
+# Install go
+cd $WORK_DIR
+sudo yum install -y tar wget gcc
+wget https://storage.googleapis.com/golang/go1.9.2.linux-s390x.tar.gz
+chmod ugo+r go1.9.2.linux-s390x.tar.gz
+sudo tar -C /usr/local -xzf go1.9.2.linux-s390x.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+cd /usr/bin
+#sudo unlink s390x-linux-gnu-gcc
+sudo ln gcc s390x-linux-gnu-gcc
+go version
+
+# Get etcd source code from github
+cd $WORK_DIR
+mkdir -p /$WORK_DIR/src/github.com/coreos
+cd /$WORK_DIR/src/github.com/coreos
+sudo rm -rf etcd
+git clone https://github.com/coreos/etcd
+cd etcd
+git checkout v3.3.2
+
+# Set GOPATH and ETCD_DATA_DIR
+export GOPATH=$WORK_DIR
+mkdir -p /$WORK_DIR/etcd_temp
+export ETCD_DATA_DIR=/$WORK_DIR/etcd_temp
+
+# Build etcd
+cd $WORK_DIR/src/github.com/coreos/etcd
+./build
+
+# Execute test suite
+cd $WORK_DIR/src/github.com/coreos/etcd
+./test
+
+# Test etcd service
+cd $WORK_DIR/src/github.com/coreos/etcd
+export ETCD_UNSUPPORTED_ARCH=s390x
+./bin/etcd &amp;
+
+sleep 15s
+
+#Check basic functionality
+curl -L http://127.0.0.1:2379/v2/keys/mykey -XPUT -d value=&quot;this is awesome&quot;
+curl -L http://127.0.0.1:2379/v2/keys/mykey
+./bin/etcd --version
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@salamani</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

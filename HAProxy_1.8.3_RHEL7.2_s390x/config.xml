@@ -1,0 +1,152 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel7.2</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 15 * * 7</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 15 * * 7</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>cat /etc/redhat-release
+sudo yum install -y wget tar make gcc unzip curl
+export WORK_DIR=`pwd`
+#Install HAProxy
+wget http://www.haproxy.org/download/1.8/src/haproxy-1.8.3.tar.gz
+tar xzvf haproxy-1.8.3.tar.gz
+cd haproxy-1.8.3
+make TARGET=linux26
+sudo make install
+
+cd $WORK_DIR
+#Install Nodejs
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/nodejs/6.12.2.0/linux/s390x/ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin
+chmod +x ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin
+echo -e &quot;LICENSE_ACCEPTED=TRUE\nUSER_INSTALL_DIR=$WORK_DIR/ibm/node\n-fileOverwrite_$WORK_DIR/ibm/node/_node_installation/uninstall.lax=Yes&quot; &gt; installer.properties
+cat installer.properties
+./ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin -f installer.properties -i silent
+
+export PATH=$PATH:/usr/local/sbin:$WORK_DIR/ibm/node/bin
+
+cd $WORK_DIR
+echo &quot;var http = require(&apos;http&apos;);
+
+function serve(ip, port)
+{
+    http.createServer(function (req, res)
+    {
+        res.writeHead(200, {&apos;Content-Type&apos;: &apos;text/plain&apos;});
+        res.write(JSON.stringify(req.headers));
+        res.end(\&quot;\nThere&apos;s no place like \&quot;+ip+\&quot;:\&quot;+port+\&quot;\n\&quot;);
+    }).listen(port, ip);
+    console.log(&apos;Server running at http://&apos;+ip+&apos;:&apos;+port+&apos;/&apos;);
+}
+
+// Create three servers for
+// the load balancer, listening on any
+// network on the following three ports
+serve(&apos;0.0.0.0&apos;, 9023);
+serve(&apos;0.0.0.0&apos;, 9024);
+serve(&apos;0.0.0.0&apos;, 9025);&quot; &gt; node.js
+
+echo &quot;global
+    daemon
+    maxconn 256
+
+defaults
+    mode http
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+frontend http-in
+    bind *:8089
+    default_backend neo4j
+
+backend neo4j
+    mode http
+    balance roundrobin
+    option forwardfor
+    http-request set-header X-Forwarded-Port %[dst_port]
+    option httpchk HEAD / HTTP/1.1\r\nHost:localhost
+    server s1 127.0.0.1:9023 maxconn 32
+    server s2 127.0.0.1:9024 maxconn 32
+    server s3 127.0.0.1:9025 maxconn 32
+
+listen admin
+    bind *:8080
+    stats enable&quot; &gt; haproxy.config
+    
+    
+node node.js &amp;
+#nohup node server.js &amp;
+ls
+haproxy -f haproxy.config
+
+curl 0.0.0.0:8089
+curl 0.0.0.0:8089
+curl 0.0.0.0:8089
+curl 0.0.0.0:8089
+
+ haproxy -v | grep 1.8.3</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @gsalgaon</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

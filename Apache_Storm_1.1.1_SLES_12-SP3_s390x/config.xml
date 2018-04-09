@@ -1,0 +1,132 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-sp3_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo zypper update -y
+sudo zypper install -y git java-1_8_0-openjdk tar wget which curl awk
+
+rm -rf source_root
+mkdir source_root
+cd source_root
+export WORK_DIR=`pwd`
+
+#build maven 3.2.5
+wget http://www.eu.apache.org/dist/maven/maven-3/3.2.5/binaries/apache-maven-3.2.5-bin.tar.gz
+tar -xzf apache-maven-3.2.5-bin.tar.gz
+export PATH=$PWD/apache-maven-3.2.5/bin:$PATH
+
+#install IBM SDK for node js
+cd $WORK_DIR
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/nodejs/6.12.2.0/linux/s390x/ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin
+chmod +x ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin
+echo -e &quot;LICENSE_ACCEPTED=TRUE\nUSER_INSTALL_DIR=$WORK_DIR/ibm/node\n-fileOverwrite_$WORK_DIR/ibm/node/_node_installation/uninstall.lax=Yes&quot; &gt; installer.properties
+cat installer.properties
+./ibm-6.12.2.0-node-v6.12.2-linux-s390x.bin -f installer.properties -i silent
+
+export PATH=$WORK_DIR/ibm/node/bin:$PATH
+
+#Install rvm and nvm
+cd $HOME
+curl -L https://get.rvm.io | bash -s stable --autolibs=enabled &amp;&amp; source $HOME/.profile  
+command curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -  
+wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.26.1/install.sh | bash &amp;&amp; source $HOME/.bashrc
+
+#set environment variables
+export JAVA_HOME=/usr/lib64/jvm/java-1.8.0-openjdk
+export PATH=$JAVA_HOME/bin:$PATH:$M2_HOME/bin
+export _JAVA_OPTIONS=-Xmx4096m
+export JVM_ARGS=&quot;-Xms4096m -Xmx4096m&quot;
+export MAVEN_OPTS=&quot;-Xms4096m -Xmx8192m -Xss4096k&quot;
+
+#Download source and build. Skipping test due to random intermittent failures
+cd $WORK_DIR
+git clone https://github.com/apache/storm.git  
+cd storm  
+git checkout tags/v1.1.1
+mvn -B clean install -DskipTests
+
+#generate gpg key
+echo &quot;Key-Type: 1
+Key-Length: 2048
+Subkey-Type: 1
+Subkey-Length: 2048
+Name-Real: Root Superuser
+Name-Email: root@handbook.westarete.com
+Expire-Date: 0&quot; &gt; gen-key-script
+gpg --batch --gen-key gen-key-script
+
+#create binary distribution
+cd storm-dist/binary &amp;&amp; mvn -B package</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@Aditi.Jadhav</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers>
+    <EnvInjectPasswordWrapper plugin="envinject@1.93.1">
+      <injectGlobalPasswords>false</injectGlobalPasswords>
+      <maskPasswordParameters>true</maskPasswordParameters>
+      <passwordEntries/>
+    </EnvInjectPasswordWrapper>
+  </buildWrappers>
+</project>

@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles11-sp4</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 18 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 18 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Check if published version is already present in repo 
+package_name=&quot;nginx&quot;
+published_version=&quot;1.12.2&quot;
+
+#Check distro and available version in repo : 
+available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+# Install Dependencies
+sudo zypper install -y pcre-devel wget tar xz gcc make zlib-devel
+
+workspace_dir=`pwd`
+
+#Get the sourcecode
+wget http://nginx.org/download/nginx-1.12.2.tar.gz
+tar xvf nginx-1.12.2.tar.gz
+
+# Configure make and install
+cd nginx-1.12.2
+./configure
+make
+sudo make install
+
+# Adding test cases
+cd /tmp
+cat &gt; index.html &lt;&lt;- EOM
+&lt;!DOCTYPE html PUBLIC &quot;-//W3C//DTD XHTML 1.0 Strict//EN&quot; &quot;http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd&quot;&gt;
+    &lt;html&gt;
+    &lt;head&gt;
+     &lt;title&gt;Test HTML File&lt;/title&gt;
+     &lt;meta http-equiv=&quot;Content-Type&quot; content=&quot;text/html;charset=utf-8&quot; /&gt;
+    &lt;/head&gt;
+    &lt;body&gt;
+     &lt;p&gt;This is a very simple HTML file.&lt;/p&gt;
+    &lt;/body&gt;
+    &lt;/html&gt;
+EOM
+
+cat &gt; nginx.conf &lt;&lt;- EOM
+worker_processes     3;
+    error_log            logs/error.log;
+    pid                  logs/nginx.pid;
+    worker_rlimit_nofile 8192;
+
+    events
+    {
+    worker_connections  2048;
+    }
+
+    http
+    {
+    index index.html index.htm index.php;
+
+    default_type application/octet-stream;
+    log_format   main &apos;$remote_addr - $remote_user [$time_local]  $status &apos;
+       &apos;&quot;$request&quot; $body_bytes_sent &quot;$http_referer&quot; &apos;
+       &apos;&quot;$http_user_agent&quot; &quot;$http_x_forwarded_for&quot;&apos;;
+    access_log   logs/access.log  main;
+    sendfile     on;
+    tcp_nopush   on;
+    server_names_hash_bucket_size 128;
+
+    server
+    {
+     listen 8080;
+     root /tmp;
+     location /
+     {
+     }
+    }
+    server {
+     location / {
+     proxy_pass http://localhost:8080/;
+     }
+    }
+    }
+EOM
+
+#Start Nginx
+sudo /usr/local/nginx/sbin/nginx -c /tmp/nginx.conf
+
+mkdir -p test_output
+
+cd test_output
+
+rm -f index.html
+
+wget http://localhost:8080/
+
+if [[ -z `diff /tmp/index.html /tmp/test_output/index.html -u` ]]; then exit 0; else exit 1; fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@aditya.pawaskar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

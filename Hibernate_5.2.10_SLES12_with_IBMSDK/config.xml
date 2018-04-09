@@ -1,0 +1,137 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12-ibm-java-8</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 10 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 10 * * 1 </spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo zypper update -y 
+sudo zypper install -y git wget libicu-devel libboost_locale1_54_0 perl-Encode-Locale gcc-locale glibc-locale 
+cat /etc/os-release
+
+
+export hibernate_home=$(pwd)
+export JAVA_HOME=/opt/ibm/java-s390x-80
+export PATH=$JAVA_HOME/bin:$PATH
+
+java -version
+
+#Set Environmental variables
+export LANG=en_US.UTF-8
+export JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF8
+export _JAVA_OPTIONS=&quot;-Xmx10g&quot;
+
+#Download the source code
+sudo rm -rf hibernate-orm
+git clone git://github.com/hibernate/hibernate-orm.git
+cd hibernate-orm
+git checkout 5.2.10
+    
+mkdir -p $HOME/.gem/jruby/1.9
+
+#Build Hibernate
+./gradlew build -x :documentation:renderGettingStartedGuides -x :documentation:renderIntegrationGuide -x :documentation:renderUserGuide -x test
+
+#Store known failures
+echo &apos;org.hibernate.jpa.test.criteria.nulliteral.CriteriaLiteralsTest &gt; testCriteriaParameters FAILED
+org.hibernate.jpa.test.criteria.nulliteral.CriteriaLiteralsTest &gt; testLiteralsInSelectClause FAILED
+org.hibernate.jpa.test.criteria.nulliteral.CriteriaLiteralsTest &gt; testLiteralsInWhereClause FAILED
+org.hibernate.jpa.test.criteria.paths.SingularAttributeJoinTest &gt; testEntityModeMapJoins FAILED
+org.hibernate.jpa.test.ejb3configuration.DisableDiscardPersistenceContextOnCloseTest &gt; testDiscardOnClose FAILED
+org.hibernate.jpa.test.ejb3configuration.EnableDiscardPersistenceContextOnCloseTest &gt; testDiscardOnClose FAILED
+org.hibernate.jpa.test.lock.StatementIsClosedAfterALockExceptionTest &gt; testStatementIsClosed FAILED
+org.hibernate.test.boot.database.qualfiedTableNaming.NamespaceTest &gt; testPhysicalNameSchemaAndCatalog FAILED
+org.hibernate.test.criteria.CriteriaQueryTest &gt; classMethod FAILED
+org.hibernate.test.insertordering.ElementCollectionTest &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithBidirectionalManyToMany &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithBidirectionalMapsIdOneToOne &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithBidirectionalOneToMany &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithBidirectionalOneToOne &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithJoinedTableInheritance &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithJoinedTableMultiLevelInheritance &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithSingleTableInheritance &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithTablePerClassInheritance &gt; classMethod FAILED
+org.hibernate.test.insertordering.InsertOrderingWithUnidirectionalOneToOne &gt; classMethod FAILED
+org.hibernate.test.jdbc.internal.SessionJdbcBatchTest &gt; classMethod FAILED
+org.hibernate.test.resource.transaction.jdbc.autocommit.H2SkipAutoCommitTest &gt; test FAILED
+org.hibernate.test.timestamp.JdbcTimeCustomTimeZoneTest &gt; classMethod FAILED
+org.hibernate.test.timestamp.JdbcTimeDefaultTimeZoneTest &gt; classMethod FAILED
+org.hibernate.test.timestamp.JdbcTimestampCustomSessionLevelTimeZoneTest &gt; classMethod FAILED
+org.hibernate.test.timestamp.JdbcTimestampCustomTimeZoneTest &gt; classMethod FAILED
+org.hibernate.test.timestamp.JdbcTimestampDefaultTimeZoneTest &gt; classMethod FAILED
+org.hibernate.boot.model.process.internal.ScanningCoordinatorTest &gt; classMethod FAILED
+org.hibernate.cfg.annotations.CollectionBinderTest &gt; testAssociatedClassException FAILED
+org.hibernate.engine.jdbc.internal.JdbcCoordinatorTest &gt; testConnectionClose FAILED
+:hibernate-core:test FAILED
+BUILD FAILED&apos; &gt; $HOME/known_failures
+
+#Run the testsuite and compare failures
+./gradlew test -Dtests.haltonfailure=false --continue test 2&gt;&amp;1 | tee $HOME/testlog
+
+grep FAILED $HOME/testlog | tee $HOME/failures
+cat $HOME/failures
+diff -u --ignore-all-space &lt;(sort $HOME/failures) &lt;(sort $HOME/known_failures)</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@Aditi.Jadhav</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

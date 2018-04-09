@@ -1,0 +1,173 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>Build Snappy-Java on SLES12-SP2</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12-sp2</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 0</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 0</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;snappy-java&quot;
+published_version=&quot;1.1.7&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+sudo zypper update -y 
+cat /etc/issue
+export WORK_DIR=`pwd`
+# Install dependencies
+sudo zypper install -y automake autoconf libtool pkg-config gcc-c++ git-core wget tar make patch which curl net-tools
+
+# Install Cmake 3.1.0 from source
+wget http://www.cmake.org/files/v3.1/cmake-3.1.0.tar.gz
+gzip -d cmake-3.1.0.tar.gz
+tar xvf cmake-3.1.0.tar
+cd cmake-3.1.0
+./configure --prefix=/cmake-3.1.0/cmake
+make &amp;&amp; sudo make install
+export PATH=$WORK_DIR/cmake-3.1.0/bin:$PATH
+
+# Check out the Snappy-Java source code:
+cd $WORK_DIR
+git clone https://github.com/xerial/snappy-java.git
+cd snappy-java
+git checkout 1.1.7
+
+
+# Set the JAVA_HOME environment variable
+cd $WORK_DIR
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/java/8.0.5.7/linux/s390x/ibm-java-s390x-sdk-8.0-5.7.bin
+wget https://raw.githubusercontent.com/zos-spark/scala-workbench/master/files/installer.properties.java
+tail -n +3 installer.properties.java | tee installer.properties
+cat installer.properties
+chmod +x ibm-java-s390x-sdk-8.0-5.7.bin
+sudo ./ibm-java-s390x-sdk-8.0-5.7.bin -r installer.properties
+export JAVA_HOME=/opt/ibm/java
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+# build the C++ code as well as the Java classes, and use Scala SBT to package the binaries into a JAR file
+cd $WORK_DIR/snappy-java
+make IBM_JDK_7=1 USE_GIT=1 GIT_SNAPPY_BRANCH=1.1.7 GIT_REPO_URL=https://github.com/google/snappy.git 
+
+
+ldd target/snappy-1.1.7-Linux-s390x/libsnappyjava.so
+
+cd target
+echo &apos;
+import org.xerial.snappy.*;
+public class Test {
+      public static void main(String[] args) {
+           try {
+                String input = &quot;Hello snappy-java! Snappy-java is a JNI-based wrapper of &quot; + 
+						&quot;Snappy, a fast compresser/decompresser.&quot;;
+				byte[] compressed = Snappy.compress(input.getBytes(&quot;UTF-8&quot;));
+				byte[] uncompressed = Snappy.uncompress(compressed);
+
+				String result = new String(uncompressed, &quot;UTF-8&quot;);
+				System.out.println(result);
+                } catch(Exception e){
+                         System.out.println(e);
+                }
+      }
+}
+&apos; &gt; Test.java
+
+# Compile java example
+javac -cp &quot;.:snappy-java-1.1.7.jar&quot; Test.java
+
+# Run example: 
+java -cp &quot;.:snappy-java-1.1.7.jar&quot; Test &gt; test_result.txt
+
+#Following ouput should be observed:
+# ```Hello snappy-java! Snappy-java is a JNI-based wrapper of Snappy, a fast compresser/decompresser.```
+
+echo &apos;Hello snappy-java! Snappy-java is a JNI-based wrapper of Snappy, a fast compresser/decompresser.&apos; &gt; expected_result.txt
+
+result=`diff test_result.txt expected_result.txt`
+
+if [ -z &quot;$result&quot; ] ; then
+  exit 0
+else
+  exit 1
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

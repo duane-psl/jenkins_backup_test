@@ -1,0 +1,107 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel7.4</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 0</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 0</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc 
+# Build Dependencies
+sudo yum install -y git automake libtool make gcc-c++ tar
+
+# Set Environment variables
+export LANG=&apos;en_US.UTF-8&apos;
+export LC_ALL=&apos;en_US.UTF-8&apos;
+
+#checkout the Xercex 3.2.1
+git clone git://github.com/apache/xerces-c.git 
+cd xerces-c
+git checkout Xerces-C_3_2_1
+
+# configure
+./reconf
+./configure
+
+# make,test,install
+make
+
+make check
+
+sudo make install
+
+# Verification 
+if [ ! -f /usr/local/lib/libxerces-c-3.2.so ] || [ ! -f /usr/local/lib/libxerces-c.a ] || [ ! -f /usr/local/lib/libxerces-c.la ] || [ ! -f /usr/local/lib/libxerces-c.so ]
+then
+     exit 1;
+fi
+
+if [ ! -d /usr/local/lib/pkgconfig ] || [ ! -d /usr/local/include/xercesc/dom ] || [ ! -d /usr/local/include/xercesc/framework ] || [ ! -d /usr/local/include/xercesc/internal ] || [ ! -d /usr/local/include/xercesc/parsers ] || [ ! -d /usr/local/include/xercesc/sax ] || [ ! -d /usr/local/include/xercesc/sax2 ] || [ ! -d /usr/local/include/xercesc/util ] || [ ! -d /usr/local/include/xercesc/validators ] || [ ! -d /usr/local/include/xercesc/xinclude ]
+then
+     exit 1;
+
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

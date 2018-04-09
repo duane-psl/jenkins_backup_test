@@ -1,0 +1,135 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-SP2_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+sudo zypper update -y
+cat /etc/os*
+sudo zypper install -y tar wget gcc
+
+export GOPATH=`pwd`
+cd $GOPATH
+#Install GO
+wget https://storage.googleapis.com/golang/go1.9.2.linux-s390x.tar.gz
+chmod ugo+r go1.9.2.linux-s390x.tar.gz
+sudo tar -C /usr/local -xzf go1.9.2.linux-s390x.tar.gz
+cd /usr/bin
+sudo ln gcc s390x-linux-gnu-gcc
+export PATH=$PATH:/usr/local/go/bin
+go version
+
+cd $GOPATH
+#Install Terraform
+sudo zypper install -y git wget make zip which
+export PATH=$GOPATH/bin:$PATH
+mkdir -p $GOPATH/src/github.com/hashicorp
+cd $GOPATH/src/github.com/hashicorp
+git clone https://github.com/hashicorp/terraform.git
+cd terraform/
+git checkout v0.11.3
+
+# While building Terraform, test also runs &amp; Some of the tests are intermittent failures 
+make 2&gt;&amp;1 | tee -a build_logs
+cat build_logs | grep &quot;FAIL&quot; | grep github.com | awk &apos;{print $2}&apos; &gt;&gt; test.txt
+while IFS=&apos;&apos; read -r line || [[ -n &quot;$line&quot; ]]; do
+    go test -v -timeout 20m $line
+    until $? 
+    do
+     go test -v -timeout 20m $line
+    done
+done &lt; test.txt
+
+go get github.com/mitchellh/gox
+
+#Install gox
+cd $GOPATH/src/github.com/mitchellh/gox
+git checkout v0.4.0
+wget https://github.com/mitchellh/gox/pull/85.patch
+git config --global user.email &quot;bagalvitthal94@gmail.com&quot;
+git config --global user.name &quot;vitthal bagal&quot;
+git am 85.patch
+cd $GOPATH/src/github.com/mitchellh/
+go get github.com/mitchellh/iochan
+go install ./... 
+
+
+#Build terraform
+
+cd $GOPATH/src/github.com/hashicorp/terraform/
+XC_OS=linux XC_ARCH=s390x make bin
+
+file pkg/linux_s390x/terraform | grep &quot;IBM S/390&quot;
+
+
+#Verification
+terraform --version | grep 0.11.3
+echo &quot;1 + 5&quot; | terraform console
+
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@vitthalb</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

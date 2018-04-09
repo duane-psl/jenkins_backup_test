@@ -1,0 +1,123 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.4_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 15 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 15 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+
+#Install dependencies
+sudo yum install -y flex bison gcc gcc-c++ cmake perl libtool openssl-devel libaio-devel git-core wget tar coreutils sqlite-devel.s390 sqlite-devel.s390x sqlite.s390x tcl tcl-devel libuuid-devel libgcrypt-devel make ncurses-devel libcurl-devel mariadb-devel mariadb-embedded-devel lua-static.s390 lua-static.s390x lua-devel.s390x pam-devel.s390x pam.s390x pam-devel.s390 pam-devel.s390x redhat-lsb.s390x gnutls-devel.s390x valgrind libedit.s390x doxygen.s390x
+
+export WORK_DIR=`pwd`
+cd $WORK_DIR
+
+#Install CMake 3.3.0
+wget http://www.cmake.org/files/v3.3/cmake-3.3.0.tar.gz
+tar xzf cmake-3.3.0.tar.gz
+cd cmake-3.3.0
+export CXX=/usr/bin/g++
+./bootstrap --prefix=/usr
+gmake
+sudo gmake install
+
+#Clone source
+cd $WORK_DIR
+git clone https://github.com/mariadb-corporation/MaxScale.git
+cd MaxScale
+git checkout maxscale-2.2.1
+export CFLAGS=-fsigned-char
+
+#Make changes to source
+sed -i &quot;421i \ \t\   \ /*swap memory for auth token length to read it in big endian order on bigendian platforms*/&quot; ./server/modules/authenticator/MySQLAuth/mysql_auth.c
+sed -i &quot;422i \ \t\   \ #if defined(__BIG_ENDIAN) &amp;&amp; __BYTE_ORDER == __BIG_ENDIAN&quot; ./server/modules/authenticator/MySQLAuth/mysql_auth.c
+sed -i &quot;423i \ \t\          \ client_data-&gt;auth_token_len = le32toh(client_data-&gt;auth_token_len);&quot; ./server/modules/authenticator/MySQLAuth/mysql_auth.c
+sed -i &quot;424i \ \t\   \ #endif&quot; ./server/modules/authenticator/MySQLAuth/mysql_auth.c
+git diff
+
+#Build and Install Maxscale
+cd $WORK_DIR/MaxScale/pcre2
+./configure --without-pcre2-jit
+cd ..
+mkdir build &amp;&amp; cd build
+cmake -DBUILD_TESTS=Y ..
+make
+sudo make install
+
+#Testing
+ctest
+
+#Start Maxscale
+#sudo cp maxscale /usr/local/share/maxscale/
+#sudo cp maxscale.conf /usr/local/share/maxscale/
+#sudo ./postinst
+#sudo /usr/local/bin/maxscale --user=maxscale
+
+#sleep 60s
+#ps -aef | grep /usr/local/bin/maxscale
+#pgrep -d&quot; &quot; -f &quot;maxscale&quot; | xargs sudo kill;</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@chandranana.naik,@ketank</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

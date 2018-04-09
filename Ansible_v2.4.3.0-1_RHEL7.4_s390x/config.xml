@@ -1,0 +1,139 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+export Ansible_home=`pwd`
+
+#Set the below parameters manually
+package_name=&quot;ansible&quot;
+published_version=&quot;2.4.3.0&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+echo $available_version
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+cd $Ansible_home
+rm -rf ansible
+#Install the dependencies
+sudo yum install -y git wget tar svn bzip2 unzip gcc python-devel make which autoconf net-tools ssh python-setuptools python-lxml python-ldap sqlite-devel openldap-devel libxslt-devel openssl-devel libffi-devel openssl systemd-devel python-memcached systemd ncurses-devel bzip2-devel  zlib zlib-devel systemd-devel patch systemd-python.s390x patch libxml2-python.s390x
+ 
+#Install certain Python modules for Ansible later on, pip is required:
+wget https://bootstrap.pypa.io/get-pip.py
+sudo python get-pip.py 
+
+#Get the source-code
+cd $Ansible_home
+git clone git://github.com/ansible/ansible.git
+cd ansible
+git checkout v2.4.3.0-1
+
+
+#Setup the environment and get Ansible modules:
+source ./hacking/env-setup
+git submodule update --init --recursive
+source ./hacking/env-setup -q
+
+#Ansible uses the following Python modules which need to be installed:
+
+sudo pip install paramiko PyYAML jinja2 httplib2 passlib nose mock mercurial six patch django==1.11.7 call coverage coveralls funcsigs cryptography==2.0.3 pycrypto boto3 botocore readline  pytest-xdist pytest-mock boto redis s3 placebo netaddr pyVmomi xmljson f5-sdk
+
+#Install ansible
+sudo make install
+
+#Run tests
+make tests 2&gt;&amp;1 | tee testlogs &amp;&amp; grep FAILED testlogs &gt; generated_failures
+
+cat generated_failures
+echo &apos; test/units/cli/test_galaxy.py::TestGalaxyInitDefault::test_travis_yml FAILED [  2%] 
+test/units/cli/test_galaxy.py::TestGalaxyInitContainerEnabled::test_travis_yml FAILED [  2%] &apos; &gt; expected_failures
+
+diff -u  --ignore-all-space generated_failures expected_failures
+
+ansible --version
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room> #loz-jenkins-build,@ajakhade</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

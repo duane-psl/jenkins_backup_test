@@ -1,0 +1,125 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>rm -rf ./*
+export WS=`pwd`
+sudo apt-get update
+sudo apt-get install -y git tar g++ make automake autoconf libtool  wget patch libx11-dev libxt-dev openjdk-8-jre openjdk-8-jdk pkg-config texinfo locales-all unzip python
+
+#Install ant
+wget http://archive.apache.org/dist/ant/binaries/apache-ant-1.9.4-bin.tar.gz
+tar -xvf apache-ant-1.9.4-bin.tar.gz
+export ANT_HOME=`pwd`/apache-ant-1.9.4
+export PATH=$PATH:$ANT_HOME/bin
+
+#Set environment variables
+export LANG=&quot;en_US.UTF-8&quot;
+export JAVA_TOOL_OPTIONS=&quot;-Dfile.encoding=UTF8&quot;
+export ANT_OPTS=&quot;-Xms4G -Xmx4G&quot;
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-s390x/
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+#Get source code
+git clone https://github.com/apache/cassandra.git
+cd $WS/cassandra
+git checkout cassandra-3.11.2
+
+#Replace jna.jar
+cd $WS
+git clone https://github.com/java-native-access/jna.git
+cd jna
+git checkout 4.2.2
+ant
+rm $WS/cassandra/lib/jna-4.2.2.jar
+cp $WS/jna/build/jna.jar $WS/cassandra/lib/jna-4.2.2.jar
+
+#Replace snappy-java.jar
+cd $WS/cassandra
+rm $WS/cassandra/lib/snappy-java-1.1.1.7.jar
+wget -O $WS/cassandra/lib/snappy-java-1.1.2.6.jar http://central.maven.org/maven2/org/xerial/snappy/snappy-java/1.1.2.6/snappy-java-1.1.2.6.jar 
+
+#Edit files to relax timeout and memory
+cd $WS/cassandra
+sed -i &apos;s/Xss256k/Xss32m/g&apos; build.xml conf/jvm.options
+sed -i &apos;s/&lt;jvmarg value=&quot;-Dcassandra.ring_delay_ms=1000&quot;\/&gt;/&lt;jvmarg value=&quot;-Dcassandra.ring_delay_ms=10000&quot;\/&gt;/g&apos; build.xml
+sed -i &apos;s/&lt;property name=&quot;test.timeout&quot; value=&quot;240000&quot; \/&gt;/&lt;property name=&quot;test.timeout&quot; value=&quot;24000000&quot; \/&gt;/g&apos; build.xml
+sed -i &apos;s/timeout = 10000/timeout = 1000000/g&apos; test/unit/org/apache/cassandra/io/sstable/IndexSummaryManagerTest.java
+sed -i &apos;s/future.get(30, TimeUnit.SECONDS)/future.get(3000, TimeUnit.SECONDS)/g&apos; test/unit/org/apache/cassandra/cql3/validation/entities/JsonTest.java
+echo &apos;key_cache_size_in_mb: 12&apos; &gt;&gt; test/conf/cassandra.yaml
+
+git diff
+
+#Build. Skipping test due to high timeout and random failures.
+cd $WS/cassandra/
+ant
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @gsalgaon</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

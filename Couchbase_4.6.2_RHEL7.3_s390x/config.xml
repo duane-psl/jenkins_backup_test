@@ -1,0 +1,322 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>Building Couchbase 4.6.2 for RHEL7</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel7.3-8192MB</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command> source /home/test/.bashrc
+#Set the below parameters manually
+package_name=&quot;couchbase&quot;
+published_version=&quot;4.6.2&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+export Couchbase_home=`pwd`
+export PATH=$PATH:/usr/local/go/bin
+
+#Install dependencies
+sudo yum install -y autoconf automake bzip2-devel check-devel cmake curl flex gcc-c++ git java-1.7.1-ibm java-1.7.1-ibm-devel libcurl-devel libevent-devel libtool libxml2-devel libxslt-devel make ncurses-devel openssl openssl-devel pkgconfig ruby-devel snappy-devel sqlite-devel subversion tar unixODBC unixODBC-devel vim wget
+
+
+#Install Go
+cd $Couchbase_home
+wget https://storage.googleapis.com/golang/go1.9.2.linux-s390x.tar.gz
+chmod ugo+r go1.9.2.linux-s390x.tar.gz
+sudo tar -C /usr/local -xzf go1.9.2.linux-s390x.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+cd /usr/bin
+sudo ln gcc s390x-linux-gnu-gcc
+go version
+
+#Install Python
+cd $Couchbase_home
+wget https://www.python.org/ftp/python/2.7.12/Python-2.7.12.tar.xz
+tar -xf Python-2.7.12.tar.xz
+cd Python-2.7.12
+./configure --prefix=/usr/local
+make &amp;&amp; sudo make install
+sudo mv /usr/bin/python /usr/bin/python_old
+sudo ln -sf /usr/local/bin/python /usr/bin/
+python -V
+
+#Install Cmake
+cd $Couchbase_home
+wget https://cmake.org/files/v3.5/cmake-3.5.2.tar.gz
+tar -xzf cmake-3.5.2.tar.gz
+cd cmake-3.5.2
+./configure --prefix=/usr/local
+make &amp;&amp; sudo make install
+
+#Install Erlang
+cd $Couchbase_home
+git clone https://github.com/couchbasedeps/erlang.git
+cd erlang &amp;&amp; git checkout couchbase-watson
+./otp_build autoconf
+touch lib/debugger/SKIP lib/megaco/SKIP lib/observer/SKIP lib/wx/SKIP
+./configure --prefix=/usr/local --enable-smp-support --disable-hipe --disable-fp-exceptions CFLAGS=&quot;-fno-strict-aliasing -O3 -ggdb3 -DOPENSSL_NO_EC=1&quot;
+make -j$(cat /proc/cpuinfo | grep processor | wc -l) &amp;&amp; sudo make install
+
+
+#Install flatbuffers
+cd $Couchbase_home
+sudo rm -rf flatbuffers
+git clone https://github.com/google/flatbuffers
+cd flatbuffers &amp;&amp; git checkout v1.5.0
+cp include/flatbuffers/flatbuffers.h include/flatbuffers/flatbuffers.h_org
+sed -i  &apos;72 i  #define FLATBUFFERS_LITTLEENDIAN 0&apos; include/flatbuffers/flatbuffers.h
+cmake -G &quot;Unix Makefiles&quot;
+make
+export PATH=$PATH:`pwd` 
+sudo make install
+
+#Install ICU 54.1
+cd $Couchbase_home
+git clone https://github.com/couchbasedeps/icu4c.git
+cd icu4c/source &amp;&amp; git checkout r54.1
+./configure --prefix=/usr/local --disable-extras --disable-layout --disable-tests --disable-samples
+make &amp;&amp; sudo make install
+sudo cp /usr/local/lib/libicu*  /usr/local/lib64
+
+#Install Jemalloc 4.3.1
+cd $Couchbase_home
+git clone https://github.com/couchbasedeps/jemalloc.git
+cd jemalloc &amp;&amp; git checkout 4.3.1
+autoconf configure.ac &gt; configure
+chmod u+x configure
+CPPFLAGS=-I/usr/local/include ./configure --prefix=/usr/local --with-jemalloc-prefix=je_ --disable-cache-oblivious --disable-zone-allocator
+make build_lib_shared
+sudo make install_lib_shared install_include
+
+
+#Install install V8 5.2-couchbase libraries
+cd $Couchbase_home
+git clone https://github.com/couchbasedeps/v8.git
+cd v8 &amp;&amp; git checkout 5.2-couchbase
+make -j$(cat /proc/cpuinfo | grep processor | wc -l) s390x.release GYPFLAGS+=&quot;-Dcomponent=shared_library -Dv8_enable_backtrace=1 -Dv8_use_snapshot=&apos;true&apos; -Dclang=0 -Dv8_use_external_startup_data=0 -Dv8_enable_i18n_support=0 -Dtest_isolation_mode=noop&quot; PYTHONPATH=`pwd`/third_party/argparse-1.4.0 
+sudo cp -vR include/* /usr/local/include/
+sudo chmod 644 /usr/local/include/libplatform/libplatform.h
+sudo chmod 644 /usr/local/include/v8*h
+sudo cp -v out/s390x.release/lib.target/libv8.so /usr/local/lib64/
+sudo chmod -f 755 /usr/local/lib64/libv8.so
+
+#Install Repo tool
+cd $Couchbase_home
+curl https://storage.googleapis.com/git-repo-downloads/repo &gt; repo
+chmod a+x repo
+sudo rm -rf /$Couchbase_home/couchbase
+mkdir -p /$Couchbase_home/couchbase
+cd /$Couchbase_home/couchbase
+git config --global user.email anuja_jakhade@persistent.co.in
+git config --global user.name  Anuja
+../repo init -u git://github.com/couchbase/manifest -m released/4.6.2.xml
+../repo sync
+
+#Edit tlm/CMakeLists.txt
+cp tlm/CMakeLists.txt tlm/CMakeLists.txt.orig
+sed -i &apos;68d &apos; tlm/CMakeLists.txt
+sed -i &apos;68 i  SET(CB_DOWNLOAD_DEPS False&apos; tlm/CMakeLists.txt
+sed -i &apos;102d &apos; tlm/CMakeLists.txt
+
+#Edit forestdb/src/arch.h
+cp forestdb/src/arch.h forestdb/src/arch.h.org
+sed -i &apos;318 i #if defined(__s390x__)\n\t#undef SPIN_INITIALIZER\n\t#define SPIN_INITIALIZER (spin_t)(0)\n#endif &apos; forestdb/src/arch.h
+
+#Edit couchstore/src/views/bin/couch_view_file_merger.c
+cp  couchstore/src/views/bin/couch_view_file_merger.c  couchstore/src/views/bin/couch_view_file_merger.c.org
+
+sed -i &apos;40s/.*/};typedef unsigned char merge_file_type_t;/&apos; couchstore/src/views/bin/couch_view_file_merger.c
+
+#Edit forestdb/utils/debug.cc
+cp forestdb/utils/debug.cc forestdb/utils/debug.cc.org
+sed -i &apos;92 i #elif __s390x__ \n\t unsigned char *pc = (unsigned char *)u-&gt;uc_mcontext.psw.addr;&apos; forestdb/utils/debug.cc
+
+#Edit CMakeLists.txt
+cp platform/CMakeLists.txt platform/CMakeLists.txt.org
+sed -i &apos;150d &apos; platform/CMakeLists.txt
+
+#Edit platform/include/platform/crc32c.h
+cp platform/include/platform/crc32c.h platform/include/platform/crc32c.h.org
+sed -i &apos;42d&apos; platform/include/platform/crc32c.h
+sed -i &apos;42 i #if !defined(__x86_64__) &amp;&amp; !defined(_M_X64) &amp;&amp; !defined(_M_IX86) &amp;&amp; !defined(__s390x__)\n&apos; platform/include/platform/crc32c.h
+
+#Edit platform/src/crc32c.cc
+mv platform/src/crc32c.cc platform/src/crc32c.cc_ORIG
+cp /home/test/crc32c.cc  platform/src/crc32c.cc
+
+#Edit platform/tests/CMakeLists.txt
+cp platform/tests/CMakeLists.txt platform/tests/CMakeLists.txt.org
+sed -i &apos;9d &apos; platform/tests/CMakeLists.txt
+
+#Edit goproj/src/github.com/couchbase/indexing/secondary/memdb/skiplist/skiplist.go
+cd /$Couchbase_home/couchbase
+cp goproj/src/github.com/couchbase/indexing/secondary/memdb/skiplist/skiplist.go goproj/src/github.com/couchbase/indexing/secondary/memdb/skiplist/skiplist.go.org
+sed -i &apos;77,82 d &apos; goproj/src/github.com/couchbase/indexing/secondary/memdb/skiplist/skiplist.go
+sed -i &apos;77 i s.freeNode = func(*Node) {} &apos; goproj/src/github.com/couchbase/indexing/secondary/memdb/skiplist/skiplist.go
+
+#Edit memcached/include/libgreenstack/Message.h
+cp memcached/include/libgreenstack/Message.h memcached/include/libgreenstack/Message.h.org
+sed -i &apos;190 i #if !defined(__s390x__)&apos; memcached/include/libgreenstack/Message.h
+sed -i &apos;207 i #else \n\t struct Flags { \n\t bool next \n\t : 1; \n\t bool unassigned \n\t  : 2; \n\t   bool quiet \n\t : 1; \n\t  bool more \n\t : 1; \n\t  bool fence \n\t  : 1; \n\t  bool flexHeaderPresent \n\t : 1; \n\t     bool response  \n\t  : 1; \n\t    } flags; \n \t #endif&apos; memcached/include/libgreenstack/Message.h
+
+# Edit /memcached/daemon/subdocument_validators.cc
+cp memcached/daemon/subdocument_validators.cc memcached/daemon/subdocument_validators.cc.orig
+sed -i &apos; 213d &apos; memcached/daemon/subdocument_validators.cc
+sed -i &apos;213 i (htonl(__bswap_32(req-&gt;request.bodylen)) &lt; minimum_body_len) ||&apos; memcached/daemon/subdocument_validators.cc
+
+
+#Edit ep-engine/src/couch-kvstore/couch-kvstore.cc
+cp ep-engine/src/couch-kvstore/couch-kvstore.cc ep-engine/src/couch-kvstore/couch-kvstore.cc.orig
+sed -i &apos;1436d &apos; ep-engine/src/couch-kvstore/couch-kvstore.cc
+sed -i &apos;1436 i uint32_t exptime = 0;&apos;  ep-engine/src/couch-kvstore/couch-kvstore.cc
+
+sed -i &apos;1466d &apos; ep-engine/src/couch-kvstore/couch-kvstore.cc
+sed -i &apos;1466i                            itemFlags, exptime, NULL, docinfo-&gt;size, &apos; ep-engine/src/couch-kvstore/couch-kvstore.cc
+
+sed -i &apos;1512d &apos; ep-engine/src/couch-kvstore/couch-kvstore.cc
+sed -i &apos;1512 i                                    itemFlags, exptime, valuePtr, valuelen,&apos; ep-engine/src/couch-kvstore/couch-kvstore.cc
+
+sed -i &apos;1644d &apos; ep-engine/src/couch-kvstore/couch-kvstore.cc
+sed -i &apos;1644 i                        exptime, &apos; ep-engine/src/couch-kvstore/couch-kvstore.cc
+
+#Replace BoltDB package
+cd ./godeps/src/github.com/
+mv boltdb boltdb_ORIG
+mkdir boltdb
+cd boltdb
+git clone https://github.com/boltdb/bolt.git
+cd bolt/
+git checkout v1.3.0
+
+#Add the s390x crc32 support to the source code.
+git clone https://github.com/linux-on-ibm-z/crc32-s390x
+cd crc32-s390x
+make &amp;&amp; sudo cp crc32-s390x.h /usr/local/include/
+sudo cp libcrc32_s390x.a /usr/local/lib64/
+
+export CB_MULTI_GO=0
+
+#Install go tool yacc
+export GOPATH=$HOME/go
+go get -u golang.org/x/tools/cmd/goyacc
+sudo cp $HOME/go/bin/goyacc /usr/local/go/pkg/tool/linux_s390x/
+sudo chown root:root /usr/local/go/pkg/tool/linux_s390x/goyacc
+sudo chmod -f 755 /usr/local/go/pkg/tool/linux_s390x/goyacc
+sudo ln -sf /usr/local/go/pkg/tool/linux_s390x/goyacc /usr/local/go/pkg/tool/linux_s390x/yacc
+
+#Run the make command and start the building procedure
+cd /$Couchbase_home/couchbase/
+make
+
+#Run the testsuite
+cd /$Couchbase_home/couchbase/build
+ctest -I 2&gt;&amp;1 | tee testlogs &amp;&amp; grep &quot;FAILED&quot; testlogs &gt; generated_failures.txt
+
+#Start the server
+cd $Couchbase_home
+couchbase/install/bin/couchbase-server -- -noinput &amp;
+sleep 180s
+ps -aef 
+curl http://localhost:8092
+pgrep -d&quot; &quot; -f &quot;couchbase&quot; | xargs kill;
+
+kill -9 $(ps aux | grep &apos;epmd&apos; | awk &apos;{print $2}&apos;)| awk &apos;{print $2}&apos;
+
+ps -aef
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@ajakhade</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers>
+    <org.jenkinsci.plugins.configfiles.buildwrapper.ConfigFileBuildWrapper plugin="config-file-provider@2.13">
+      <managedFiles>
+        <org.jenkinsci.plugins.configfiles.buildwrapper.ManagedFile>
+          <fileId>35a4c39b-8279-426a-975d-ee530418cca0</fileId>
+          <targetLocation>/home/test</targetLocation>
+          <variable>crc32c.cc</variable>
+          <replaceTokens>false</replaceTokens>
+        </org.jenkinsci.plugins.configfiles.buildwrapper.ManagedFile>
+      </managedFiles>
+    </org.jenkinsci.plugins.configfiles.buildwrapper.ConfigFileBuildWrapper>
+  </buildWrappers>
+</project>

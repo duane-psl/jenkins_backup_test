@@ -1,0 +1,167 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@3.0.1">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <url>https://github.com/linux-on-ibm-z/mongo</url>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>v3.0-s390</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions>
+      <hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+        <relativeTargetDir>mongo</relativeTargetDir>
+      </hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+    </extensions>
+  </scm>
+  <assignedNode>ketan_rhel7.3</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 4
+</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 4
+</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+
+## Install Prerequisite
+sudo yum install -y wget tar make flex gcc gcc-c++ binutils-devel python-six python-setuptools bzip2 glibc-devel.s390 git subversion glibc-devel.s390x binutils-devel.s390x unzip zip zip texinfo openssl-devel.s390
+
+## Install GCC 5.3
+#rm -rf gcc
+git clone https://github.com/gcc-mirror/gcc
+cd gcc
+git checkout gcc-5_3_0-release
+./contrib/download_prerequisites
+./configure --prefix=&quot;/opt/gcc&quot;  --enable-shared --with-system-zlib --enable-threads=posix --enable-__cxa_atexit --enable-checking --enable-gnu-indirect-function --enable-languages=&quot;c,c++&quot; --disable-bootstrap
+make
+sudo make install
+sudo ln -sf /opt/gcc/bin/gcc /usr/bin/gcc
+sudo ln -sf /opt/gcc/bin/g++ /usr/bin/g++
+
+
+## Install scons-2.3.5-1.noarch.rpm 
+wget https://sourceforge.net/projects/scons/files/scons/2.3.5/scons-2.3.5-1.noarch.rpm
+sudo rpm -i scons-2.3.5-1.noarch.rpm
+
+## Build Mongodb 3.3.12
+
+cd /home/test/
+rm -rf mongo
+git clone https://github.com/mongodb/mongo
+cd mongo
+git checkout r3.3.12
+scons --opt --allocator=system all --use-s390x-crc32=off
+
+
+## Build MongoDB-tools
+cd /home/test/
+rm -rf mongo-tools
+git clone https://github.com/mongodb/mongo-tools
+cd mongo-tools
+git checkout r3.3.11
+
+## Install Go 
+wget https://storage.googleapis.com/golang/go1.7.1.linux-s390x.tar.gz
+tar -xzf go1.7.1.linux-s390x.tar.gz
+export PATH=$PATH:$HOME/go/bin
+export GOROOT=$HOME/go
+export CC=gcc
+
+
+## Build Mongo-tools with Gcc 6.0
+cd /home/test/mongo-tools
+./build.sh
+
+## Testing
+cd /home/test/
+rm -rf pymongo
+git clone git://github.com/mongodb/mongo-python-driver.git pymongo
+cd pymongo
+sudo python setup.py install
+sudo yum install PyYAML
+
+cd /home/test/mongo
+python buildscripts/resmoke.py --suites=core
+python buildscripts/resmoke.py --suites=unittests
+./dbtest
+
+## Keep mongo libriaries: 
+#for i in mongo mongobridge mongod mongoperf mongos ; do
+ #   cp mongo/$i /usr/local/bin/
+  #  chmod 755 /usr/local/bin/$i
+#done
+
+#for i in mongodump mongoexport mongofiles mongoimport \
+ #       mongooplog mongorestore mongostat mongotop ; do
+  #  cp mongo-tools/bin/$i /usr/local/bin/
+   # chmod 755 /usr/local/bin/$i
+#done</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

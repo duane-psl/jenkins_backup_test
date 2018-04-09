@@ -1,0 +1,153 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H H * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Install dependencies
+sudo yum install -y git java-1.8.0-openjdk.s390x java-1.8.0-openjdk-devel.s390x
+
+#Set Environmental Variable
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0  
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+#Get the source code
+sudo rm -rf mongo-java-driver
+git clone https://github.com/mongodb/mongo-java-driver.git
+cd mongo-java-driver
+git checkout r3.6.1
+
+
+#Build 
+./gradlew assemble
+
+
+
+#Testcases passes on host and on re-run
+#./gradlew check -i -s -Dorg.mongodb.test.uri=mongodb://localhost:27017
+
+#Verification
+#Start the MongoDB server
+sudo yum install -y wget
+wget https://repo.mongodb.com/yum/redhat/7/mongodb-enterprise/3.5/s390x/RPMS/mongodb-enterprise-unstable-server-3.5.8-1.el7.s390x.rpm
+sudo yum --nogpgcheck localinstall -y mongodb-enterprise-unstable-server-3.5.8-1.el7.s390x.rpm
+sudo mkdir -p db
+sudo /usr/bin/mongod --dbpath db &amp;
+sleep 40s
+
+echo &apos;import java.util.ArrayList;
+import java.util.List;
+import org.bson.Document;
+import com.mongodb.MongoClient;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoDatabase;
+
+
+public class test {
+    public static void main(String[] args) {
+
+        String server_name=&quot;localhost&quot;;
+        String database_name=&quot;ibm_test_db&quot;;
+        String collection_name=&quot;mongodb_java_driver&quot;;
+
+        MongoClient mongoClient = new MongoClient(server_name);
+        MongoDatabase database = mongoClient.getDatabase(database_name);
+        MongoCollection&lt;Document&gt; collection = database.getCollection(collection_name);
+
+        collection.drop();
+
+        Document doc = new Document(&quot;company&quot;, &quot;IBM&quot;)
+            .append(&quot;MongoDB Driver&quot;, new Document(&quot;language&quot;, &quot;Java&quot;).append(&quot;version&quot;, &quot;r3.6.1&quot;));
+        collection.insertOne(doc);
+
+        List&lt;Document&gt; documents = new ArrayList&lt;Document&gt;();
+        for (int i = 0; i &lt; 3; i++) {
+            documents.add(new Document(&quot;line&quot;, i));
+        }
+        collection.insertMany(documents);
+
+        Document myDoc = collection.find().first();
+        System.out.println(myDoc.toJson());
+        MongoCursor&lt;Document&gt; cursor = collection.find().iterator();
+        try {
+            cursor.next();
+            while (cursor.hasNext()) {
+                System.out.println(cursor.next().toJson());
+            }
+        } finally {
+            cursor.close();
+        }
+    }
+}&apos; &gt; test.java
+
+javac -cp mongo-java-driver/build/libs/mongo-java-driver-3.6.1.jar test.java
+java -cp mongo-java-driver/build/libs/mongo-java-driver-3.6.1.jar:. test
+
+sleep 60s
+pgrep -d&quot; &quot; -f &quot;gradle&quot; | sudo xargs kill; 
+sleep 10
+pgrep -d&quot; &quot; -f &quot;mongod&quot; | sudo xargs kill;</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @agautam</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>true</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>false</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

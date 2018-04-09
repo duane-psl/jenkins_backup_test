@@ -1,0 +1,118 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 6</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 6</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+
+export WORK_DIR=`pwd`
+
+sudo apt-get update -y &amp;&amp; sudo  apt-get install -y wget texinfo make autoconf ant openjdk-8-jdk git libtool autogen zip
+sudo wget -q -O - https://pkg.jenkins.io/debian/jenkins-ci.org.key | sudo apt-key add -
+sudo sh -c &apos;echo deb http://pkg.jenkins.io/debian-stable binary/ &gt; /etc/apt/sources.list.d/jenkins.list&apos;
+sudo apt-get update -y
+
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-s390x
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+
+sudo apt-get install -y jenkins 
+sudo service jenkins stop
+
+sudo rm -rf /var/cache/jenkins/war
+cp /usr/share/jenkins/jenkins.war /tmp/
+cd /tmp
+jar -xvf jenkins.war WEB-INF/lib/jna-4.2.1.jar
+wget  http://repo1.maven.org/maven2/net/java/dev/jna/jna/4.5.0/jna-4.5.0.jar -O WEB-INF/lib/jna-4.5.0.jar
+jar -uvf jenkins.war WEB-INF/lib/jna-4.5.0.jar
+jar -xvf jenkins.war META-INF/MANIFEST.MF
+
+
+
+##Modify the META-INF/MANIFEST.MF
+cat -n ./META-INF/MANIFEST.MF
+sudo sed -i &apos;10,$d&apos; ./META-INF/MANIFEST.MF
+cat -n ./META-INF/MANIFEST.MF
+
+jar -uvf jenkins.war META-INF/MANIFEST.MF  
+jar -uvfm jenkins.war META-INF/MANIFEST.MF
+zip -d jenkins.war META-INF/JENKINS.SF
+zip -d jenkins.war META-INF/JENKINS.RSA
+zip -d jenkins.war WEB-INF/lib/jna-4.2.1.jar
+sudo cp jenkins.war /usr/share/jenkins/jenkins.war  
+
+
+sudo service jenkins start	
+sudo apt-cache policy jenkins|grep -i installed
+
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @cgopi</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

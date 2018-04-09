@@ -1,0 +1,185 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 16 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 16 * * 5</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;conda&quot;
+published_version=&quot;4.3.21&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+sudo su -c &quot;echo &apos;deb-src http://archive.ubuntu.com/ubuntu/ xenial main&apos; &gt;&gt; /etc/apt/sources.list&quot;
+sudo apt update
+sudo apt install -y curl wget vim python-pip git
+sudo apt build-dep -y python3.5
+sudo locale-gen en_US.UTF-8
+sudo localedef -i en_US -f UTF-8 en_US.UTF-8
+export LANGUAGE=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+sudo locale-gen en_US.UTF-8
+sudo su -c &quot;echo -e &apos;LANG=en_US.UTF-8&apos; &gt;&gt; /etc/default/locale&quot;
+
+#Downloading the Miniconda installation script
+export WORK_DIR=`pwd`
+cd $WORK_DIR
+wget https://repo.continuum.io/miniconda/Miniconda3-4.3.21-Linux-x86_64.sh
+mv Miniconda3-4.3.21-Linux-x86_64.sh Miniconda3-4.3.21-Linux-s390x.sh
+
+
+#install python 3.6.1
+
+sudo apt-get update
+sudo apt-get install -y gcc g++ make libncurses5-dev libreadline6-dev libssl-dev libgdbm-dev libc6-dev libsqlite3-dev libbz2-dev xz-utils patch wget tar curl patch bzip2
+cd $WORK_DIR
+wget https://www.python.org/ftp/python/3.6.1/Python-3.6.1.tar.xz
+tar -xvf Python-3.6.1.tar.xz
+
+cd Python-3.6.1
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+
+
+ls -la $WORK_DIR/Python-3.6.1
+file $WORK_DIR/Python-3.6.1/python
+cd $WORK_DIR  
+		sed -i &apos;74s/read ans/ans=$1/&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+		sed -i &apos;82,197 s/^/#/&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+		sed -i &apos;201s/read ans/ans=$2/&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+		sed -i &apos;207s/read ans/ans=$3/&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+		sed -i &apos;224s/read user_prefix/user_prefix=$4/&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+		sed -i &apos;359s/read ans/ans=$5/&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+		sed -i &apos;60,64 s/^/#/&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+		line1=&apos;cp $WORK_DIR/Python-3.6.1/python $PREFIX/pkgs/python-3.6.1-2/bin/python;&apos; 
+		line2=&apos;cp $PREFIX/pkgs/python-3.6.1-2/lib/python3.6/_sysconfigdata_m_linux_x86_64-linux-gnu.py $PREFIX/pkgs/python-3.6.1-2/lib/python3.6/_sysconfigdata_m_linux_s390x-linux-gnu.py;&apos; 
+		line3=&apos;sed -i &quot;s/lib\\/python3.6\\/__pycache__\\/_sysconfigdata_m_linux_x86_64-linux-gnu.cpython-36.pyc/lib\\/python3.6\\/__pycache__\\/_sysconfigdata_m_linux_s390x-linux-gnu.cpython-36.pyc/g&quot; $PREFIX/pkgs/python-3.6.1-2/info/files;&apos; 
+		line4=&apos;sed -i &quot;s/lib\\/python3.6\\/_sysconfigdata_m_linux_x86_64-linux-gnu.py/lib\\/python3.6\\/_sysconfigdata_m_linux_s390x-linux-gnu.py/g&quot; $PREFIX/pkgs/python-3.6.1-2/info/files&apos; 
+		sed -i &quot;325s#^#$line1 $line2 $line3 $line4#g&quot; Miniconda3-4.3.21-Linux-s390x.sh 
+		line5=&apos;sed -i &quot;580i \\ \ \ \ \ \ \ \ \ \ \ \ try:&quot; $PREFIX/pkgs/.install.py;&apos; 
+		line6=&apos;sed -i &quot;582i \\ \ \ \ \ \ \ \ \ \ \ \ except:&quot; $PREFIX/pkgs/.install.py;&apos; 
+		line7=&apos;sed -i &quot;583i \\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ pass&quot; $PREFIX/pkgs/.install.py;&apos; 
+		line8=&apos;sed -i &quot;581 s/^/\ \ \ \ /g&quot; $PREFIX/pkgs/.install.py;&apos; 
+		sed -i &quot;334s#^#$line5 $line6 $line7 $line8#g&quot; Miniconda3-4.3.21-Linux-s390x.sh 
+		sed -i &apos;338s#^#rm -r $PREFIX/lib/python3.6/lib-dynload; cp -r $WORK_DIR/Python-3.6.1/build/lib.linux-s390x-3.6/ $PREFIX/lib/python3.6/lib-dynload#g&apos; Miniconda3-4.3.21-Linux-s390x.sh 
+
+
+bash Miniconda3-4.3.21-Linux-s390x.sh yes yes yes $WORK_DIR/miniconda3 yes 
+#source ~/.bashrc   in jenkins jobs this command is not setting path correctly, but in container its working
+export PATH=$WORK_DIR/miniconda3/bin:$PATH
+echo $PATH
+which python
+python
+python -V | grep &quot;3.6.1&quot;
+# Replacing the binary files
+sudo pip install virtualenv 
+		cd $WORK_DIR 
+		virtualenv temp_env -p $WORK_DIR/miniconda3/bin/python 
+		. temp_env/bin/activate 
+		pip install ruamel.yaml 
+		pip install pycosat 
+		deactivate 
+		touch $WORK_DIR/temp_env/lib/python3.6/site-packages/ruamel/__init__.py 
+		cd $WORK_DIR/miniconda3/lib/python3.6/site-packages 
+		cp -r $WORK_DIR/temp_env/lib/python3.6/site-packages/ruamel . 
+		cp $WORK_DIR/temp_env/lib/python3.6/site-packages/pycosat.cpython-36m-s390x-linux-gnu.so . 
+	  rm pycosat.cpython-36m-x86_64-linux-gnu.so 
+	
+# Configuring Miniconda
+		conda config --add channels file://$WORK_DIR/miniconda3/conda-bld/ 
+    
+
+conda -h
+conda -V | grep &quot;4.3.21&quot;
+
+
+conda create -y -n env
+conda info --envs
+source activate env
+source deactivate
+conda remove -y --name env --all
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@srajmane</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

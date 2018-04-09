@@ -1,0 +1,153 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 5</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+#Set the below parameters manually
+package_name=&quot;postgresql&quot;
+published_version=&quot;9.6.5&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+# Install dependencies
+sudo yum install -y git wget build-essential gcc gcc-c++ make readline-devel zlib-devel bison flex
+
+# Create user group and home directory
+sudo groupadd -r postgres
+
+# Modify users information
+sudo usermod -a -G postgres test 
+
+# Change directory to postgres source code
+cd /home/test
+git clone git://github.com/postgres/postgres.git
+cd /home/test/postgres    
+git checkout REL9_6_5
+   
+# Configure, build and test the build 
+./configure
+make
+make check
+
+# Install PostgreSQL as a standard permission user
+cd /home/test/postgres
+whoami
+sudo make install
+export PATH=$PATH:/usr/local/pgsql/bin
+postgres -V
+echo &quot;Installation Done&quot;
+
+# Create PostgreSQL data directory to store data and make postgres user as the owner
+sudo chmod -R 777 /usr/local/pgsql
+sudo mkdir /usr/local/pgsql/data 
+sudo chown test:postgres /usr/local/pgsql/data
+
+echo &quot;Setup Done&quot;
+
+# Initialize PostgreSQL data directory as postgres user
+
+/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data/
+
+## Automation(start service and insert queries into database)
+# Command to create,insert and select query
+echo -e &quot;CREATE TABLE COLS(ID INT PRIMARY KEY NOT NULL, NAME TEXT NOT NULL, AGE INT NOT NULL, ADDRESS CHAR(50), SALARY REAL, JOIN_DATE DATE);\nINSERT INTO COLS(ID,NAME,AGE,ADDRESS,SALARY,JOIN_DATE) VALUES (1, &apos;Test1&apos;, 32, &apos;India&apos;, 90000.00 ,&apos;2016-07-13&apos;);\nSELECT * FROM COLS WHERE NAME = &apos;Test1&apos;;&quot; &gt; /home/test/commands.sql
+
+# Command to check if record is inserted properly
+echo -e &quot;grep -q &apos;1 row&apos; &apos;log.txt&apos;\nif ((\$? &gt; 0)); then\necho &apos;Failure&apos;\nexit 1;\nfi&quot; &gt; /home/test/check.sh
+chmod  u+x  /home/test/check.sh
+
+# Script for starting the server
+echo -e &quot;/usr/local/pgsql/bin/postmaster -D /usr/local/pgsql/data  &amp; &gt; /dev/null  &amp;&amp; sleep 5 \n /usr/local/pgsql/bin/psql -w -Utest -dpostgres  -a -f /home/test/commands.sql &gt; /home/test/postgres/log.txt&quot; &gt; /home/test/startserver.sh
+chmod  u+x  /home/test/startserver.sh
+
+sleep 200s
+# Start PostgreSQL server
+/home/test/startserver.sh
+
+# Check if insert query is succesful for postgres server
+/home/test/check.sh
+sleep 200s
+pgrep -d&quot; &quot; -f &quot;pgsql&quot; | sudo xargs kill || true;</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @Aditi.Jadhav</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

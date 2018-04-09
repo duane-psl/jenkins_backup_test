@@ -1,0 +1,158 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>preeto_rhel||dockercloud_rhel7.4</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 6</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 6</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Install Python MongoDB Driver and its dependencies
+source /home/test/.bashrc
+# Install Python MongoDB Driver
+sudo yum install -y git openssl openssl-devel pyOpenSSL  python-devel python-setuptools python-setuptools-devel python-virtualenv libffi-devel gcc
+sudo easy_install pip
+
+#Dependency for MongoDB server
+sudo yum install -y wget
+
+git clone git://github.com/mongodb/mongo-python-driver.git pymongo
+cd pymongo
+git checkout 3.6.1
+sudo python setup.py install
+
+
+#Start the MongoDB server
+wget https://repo.mongodb.com/yum/redhat/7/mongodb-enterprise/3.6/s390x/RPMS/mongodb-enterprise-server-3.6.1-1.el7.s390x.rpm
+sudo yum --nogpgcheck localinstall -y mongodb-enterprise-server-3.6.1-1.el7.s390x.rpm
+sudo mkdir -p db
+sudo /usr/bin/mongod --dbpath db &amp;
+sleep 40s
+
+
+# Run Tests
+export DB_IP=127.0.0.1
+sudo -E python setup.py test
+
+# Testing if installation is succesfull
+
+#Expected output
+
+echo -e &quot; {u&apos;_id&apos;: ObjectId(&apos;57ff15603761b4f8010b8c43&apos;),
+ u&apos;company&apos;: u&apos;IBM&apos;,
+ u&apos;language&apos;: u&apos;python&apos;,
+ u&apos;project&apos;: u&apos;MongoDB Driver&apos;,
+ u&apos;version&apos;: u&apos;3.6.1&apos;}
+ {u&apos;_id&apos;: ObjectId(&apos;5800d970c4834c169e1b5e8b&apos;), u&apos;line&apos;: 0}
+ {u&apos;_id&apos;: ObjectId(&apos;5800d970c4834c169e1b5e8c&apos;), u&apos;line&apos;: 1}
+ {u&apos;_id&apos;: ObjectId(&apos;5800d970c4834c169e1b5e8d&apos;), u&apos;line&apos;: 2} &quot; &gt; expected_result.log
+
+
+echo &quot;import pymongo 
+import pprint
+from pymongo import MongoClient
+server = \&quot;127.0.0.1\&quot; ;
+database=\&quot;ibm_test_db\&quot;;
+collection=\&quot;mongodb_python_driver\&quot;;  
+
+serverdb=\&quot;mongodb://\&quot; + server + \&quot;:27017\&quot; ;
+
+client = MongoClient(serverdb)
+
+db = client[database];
+
+db[collection].drop(); 
+
+
+header = {\&quot;company\&quot;: \&quot;IBM\&quot;,
+          \&quot;project\&quot;: \&quot;MongoDB Driver\&quot;,
+          \&quot;language\&quot;: \&quot;python\&quot;,
+          \&quot;version\&quot;: \&quot;3.6.1\&quot;};  
+
+db[collection].insert_one(header);
+
+for i in range (0, 3):
+        doc = {\&quot;line\&quot;: i};
+        db[collection].insert_one (doc);
+
+for gotdoc in db[collection].find():
+        pprint.pprint(gotdoc); &quot; &gt; test.py
+chmod +x test.py
+
+sudo python test.py &gt; test_result.log
+
+sed -i &quot;s/u&apos;_id&apos;: ObjectId(&apos;[0-9 a-z]*&apos;)/&apos;_id&apos;/&quot; expected_result.log
+sed -i &quot;s/u&apos;_id&apos;: ObjectId(&apos;[0-9 a-z]*&apos;)/&apos;_id&apos;/&quot; test_result.log
+
+diff --ignore-all-space test_result.log expected_result.log
+
+if [ &quot;$?&quot; -eq 0 ]; then
+  echo &quot;OUTPUT FROM DATABASE&quot;
+  cat test_result.log
+  exit 0
+else
+  exit 1
+fi
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@ketank,@preeti.khorjuvenkar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

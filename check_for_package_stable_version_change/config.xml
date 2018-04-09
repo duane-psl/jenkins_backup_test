@@ -1,0 +1,128 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>This job will use a reference to determine if the packages from the list have any update on home page, which will help us to identify if the package home page needs to be visited for version change verification.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>if [ -e &quot;/etc/os-release&quot; ]; then
+	echo &quot;ubuntu&quot;
+    sudo apt-get -y update
+    sudo apt-get -y install python python-pip gcc python-dev libssl-dev libffi-dev        
+elif [ -e &quot;/etc/redhat-release&quot; ]; then
+	echo &quot;RHEL&quot;
+    sudo yum -y update
+    sudo yum install python python-setuptools gcc libffi-devel python-devel openssl openssl-devel
+elif [  -e &quot;/etc/SUSE-brand&quot; ]; then
+	echo &quot;SUSE&quot;
+    sudo zypper -y up
+    sudo zypper install python python-setuptools gcc libffi-devel python-devel openssl openssl-devel
+else
+	echo &quot;Not Supported&quot;
+fi
+
+cat &gt; cache_file.py &lt;&lt;- EOM
+#!/usr/bin/python
+import csv
+import urllib2
+import os
+import filecmp
+import sys
+
+#base path of local cache folder
+basepath = &quot;/home/test/work/change_versions/&quot;
+#path to csv file
+csvpath = &quot;%s/jenkins_version_check_links.csv&quot; % basepath
+#path to save changedFiles in jenkins workspace
+changedFilespath = &quot;%s/changedFiles.txt&quot; % basepath
+
+with open(csvpath, &apos;rb&apos;) as csvfile:
+    packageList = csv.reader(csvfile)
+    line = 1
+    failure = 0
+
+    if os.path.exists(changedFilespath):
+            os.remove(changedFilespath)
+            
+    for row in packageList:
+
+        if line == 1:
+            line = line+1
+            continue
+
+        directory = basepath+row[0]
+        filepath1 = &quot;%s/%s.html&quot; % (basepath+row[0], row[0].replace(&quot; &quot;,&quot;_&quot;))
+        print filepath1
+        filepath2 = basepath+&apos;reference.html&apos;
+        
+        try:
+            os.makedirs(directory)
+        except OSError:
+            if not os.path.isdir(directory):
+                raise
+        try:
+            html = urllib2.urlopen(row[2]).read()
+        except Exception, ex:
+            print &quot;For URL: %s, error: %s&quot; % (row[2], str(ex))
+
+        if not os.path.exists(filepath1):
+            output1 = open(filepath1,&apos;wb&apos;)
+            output1.write(html)
+            output1.close()
+        else:
+            output2 = open(filepath2,&apos;wb&apos;)
+            output2.write(html)
+            output2.close()
+            
+            if not filecmp.cmp(filepath1, filepath2, shallow=False):          
+                changedFiles = open(changedFilespath,&apos;a&apos;)
+                changedFiles.write(row[0]+&quot;\t&quot;+row[2]+&quot;\n&quot;)
+                changedFiles.close()
+                failure = 1
+
+    if failure == 1:
+        sys.exit(-1)
+EOM
+
+ls
+
+sudo /usr/bin/python cache_file.py
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+  </publishers>
+  <buildWrappers/>
+</project>

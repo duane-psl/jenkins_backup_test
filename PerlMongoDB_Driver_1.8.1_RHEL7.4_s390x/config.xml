@@ -1,0 +1,170 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh7.4_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 5 </spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 5 </spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+# Install Pre-Build Dependencies
+export Workdir=`pwd`
+sudo yum install -y make gcc tar zip perl perl-YAML cpan
+
+# Build and Install Latest CPAN
+perl -MCPAN -le &apos;print &quot;CPAN Version -&gt; $CPAN::VERSION&quot;&apos;
+sudo cpan -fi Bundle::CPAN
+perl -MCPAN -le &apos;print &quot;CPAN Version -&gt; $CPAN::VERSION&quot;&apos;
+sudo cpan Config::AutoConf
+sudo cpan -fi Path::Tiny
+sudo cpan -fi BSON::Decimal128 BSON::Types   
+
+#Build MongoDB 
+sudo cpan MongoDB
+
+
+# Verification
+
+# Start mongodb server
+sudo yum install -y wget
+wget https://repo.mongodb.com/yum/redhat/7/mongodb-enterprise/3.5/s390x/RPMS/mongodb-enterprise-unstable-server-3.5.3-1.el7.s390x.rpm
+sudo yum --nogpgcheck localinstall -y mongodb-enterprise-unstable-server-3.5.3-1.el7.s390x.rpm
+sudo mkdir -p db
+sudo /usr/bin/mongod --dbpath db &amp;
+sleep 40s
+
+# For testing purpose, using hostname as 127.0.0.1 or localhost in test_MongoDB.pl as we start mongodb server in same job.
+
+# Execute test file
+chmod 755 test_MongoDB.pl
+perl -wc test_MongoDB.pl
+perl test_MongoDB.pl 2&gt;&amp;1 | tee $Workdir/generated_output
+
+echo &quot;
+Add two users (Eddy and Stan) and use the Dumper module to print some Details:-
+----------------------------------------------------------------------------------
+Dumper id1 - \$\$u1{name} = \$VAR1 = bless( {
+                 &apos;value&apos; =&gt; &apos;559cf20179e8d86f4956d611&apos;
+               }, &apos;MongoDB::OID&apos; );
+Dumper id2 - \$\$u2{name} = \$VAR1 = bless( {
+                 &apos;value&apos; =&gt; &apos;559cf20179e8d86f4956d612&apos;
+               }, &apos;MongoDB::OID&apos; );
+
+Get a list of the users in the collection :-
+-----------------------------------------------
+User:Eddy
+User:Stan
+
+Get the name for user user1 :-
+---------------------------------
+User1 :Eddy
+
+Find the geek who likes math (should be user1 only) :-
+---------------------------------------------------------
+Geek:Eddy
+
+Make user2 a geek and change the name accordingly :-
+-------------------------------------------------------
+update({&quot;_id&quot; =&gt; 559cf20179e8d86f4956d612}, {&apos;push&apos; =&gt; {&apos;likes&apos; =&gt; &apos;math&apos;}})
+update({&quot;_id&quot; =&gt; 559cf20179e8d86f4956d612}, {&apos;set&apos; =&gt; {&apos;name&apos; =&gt; &quot;Stan the Geek&quot;}})
+
+Search again for the geeks which should now include user2 :-
+---------------------------------------------------------------
+Geek:Eddy
+Geek:Stan the Geek&quot; &gt;$Workdir/expectedoutput
+sed -i &apos;/^#/ d&apos; $Workdir/generated_output
+sed -i &quot;s/&apos;value&apos; =&gt; &apos;[0-9 a-z]*&apos;/&apos;value&apos;/g&quot; $Workdir/expectedoutput
+sed -i &quot;s/&apos;value&apos; =&gt; &apos;[0-9 a-z]*&apos;/&apos;value&apos;/g&quot; $Workdir/generated_output
+sed -i &apos;26d&apos; $Workdir/expectedoutput
+sed -i &quot;26 i update({\&quot;_id\&quot; =&gt; }, {&apos;push&apos; =&gt; {&apos;likes&apos; =&gt; &apos;math&apos;}})&quot; $Workdir/expectedoutput
+sed -i &apos;27d&apos; $Workdir/expectedoutput
+sed -i &quot;27 i update({\&quot;_id\&quot; =&gt; }, {&apos;set&apos; =&gt; {&apos;name&apos; =&gt; \&quot;Stan the Geek\&quot;}})&quot; $Workdir/expectedoutput
+sed -i &apos;26d&apos; $Workdir/generated_output
+sed -i &quot;26 i update({\&quot;_id\&quot; =&gt; }, {&apos;push&apos; =&gt; {&apos;likes&apos; =&gt; &apos;math&apos;}})&quot; $Workdir/generated_output
+sed -i &apos;27d&apos; $Workdir/generated_output
+sed -i &quot;27 i update({\&quot;_id\&quot; =&gt; }, {&apos;set&apos; =&gt; {&apos;name&apos; =&gt; \&quot;Stan the Geek\&quot;}})&quot; $Workdir/generated_output
+diff --ignore-all-space $Workdir/generated_output $Workdir/expectedoutput
+
+if [ &quot;$?&quot; -eq 0 ]; then
+  echo &quot;OUTPUT FROM DATABASE&quot;
+  cat $Workdir/generated_output
+  exit 0
+else
+  exit 1
+fi
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@vkadam</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers>
+    <org.jenkinsci.plugins.configfiles.buildwrapper.ConfigFileBuildWrapper plugin="config-file-provider@2.13">
+      <managedFiles>
+        <org.jenkinsci.plugins.configfiles.buildwrapper.ManagedFile>
+          <fileId>0f7cd9dc-e1ab-4519-a6c1-f185ade6a347</fileId>
+          <targetLocation>test_MongoDB.pl</targetLocation>
+          <variable>test_MongoDB</variable>
+          <replaceTokens>false</replaceTokens>
+        </org.jenkinsci.plugins.configfiles.buildwrapper.ManagedFile>
+      </managedFiles>
+    </org.jenkinsci.plugins.configfiles.buildwrapper.ConfigFileBuildWrapper>
+  </buildWrappers>
+</project>

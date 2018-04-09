@@ -1,0 +1,191 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-SP2_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 22 * * 5</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 22 * * 5</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>
+#Set the below parameters manually
+package_name=&quot;magento&quot;
+published_version=&quot;2.2.2&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+#-----------------------------------------------------------------------------------------
+
+export WORK_DIR=`pwd`
+
+sudo zypper update -y
+
+sudo zypper install -y tar wget curl libjpeg8-devel libpng-devel curl-devel cronie openssh libicu-devel pkg-config patch 
+sudo zypper install -y libxslt-devel gcc-c++ cmake mariadb libmysqld-devel  apache2 apache2-devel  libmcrypt libmcrypt-devel freetype2 freetype2-devel
+
+
+###Create magento database
+sudo /usr/bin/mysql_install_db --user=mysql
+sleep 15s
+sudo mkdir -p  /var/log/mysql
+sudo sed -i &apos;701s/hostname/echo $HOSTNAME/&apos; /usr/bin/mysqld_safe 
+sudo /usr/bin/mysqld_safe --user=mysql &amp;  
+sleep 20s
+sudo /usr/bin/mysql -e &quot;create database magento&quot; 
+sudo /usr/bin/mysql -e &quot;create user &apos;magento&apos;@&apos;localhost&apos; identified by &apos;magento&apos;&quot; 
+sudo /usr/bin/mysql -e &quot;grant all privileges on magento.* to &apos;magento&apos;@&apos;localhost&apos; identified by &apos;password&apos; with GRANT OPTION&quot;  
+
+
+###Install PHP
+cd $WORK_DIR
+sudo rm -rf php-7.0.23
+wget http://www.php.net/distributions/php-7.0.23.tar.gz  
+tar xvzf php-7.0.23.tar.gz 	
+cd php-7.0.23
+./configure --with-apxs2=/usr/bin/apxs --without-pcre-jit --with-openssl --enable-soap --with-libxml-dir=/usr/lib64 --with-mysqli --with-gd --with-jpeg-dir=/usr/include/jpeglib.h --with-png-dir --with-pdo_mysql --with-curl  --with-mcrypt --enable-mbstring --enable-intl --enable-zip --with-xsl --with-freetype-dir=/usr/lib64/
+
+make   
+sudo make install
+sudo cp ./php.ini-development /usr/local/php/php.ini 
+export PATH=$PATH:/usr/local/php/bin:/usr/local/bin/php:/usr/local/lib/php:/usr/local/php
+/usr/local/bin/php -v
+
+###Install Composer
+cd $WORK_DIR
+
+curl -sS https://getcomposer.org/installer | /usr/local/bin/php
+sudo mv composer.phar /usr/local/bin/composer
+chmod +x /usr/local/bin/composer
+export PATH=$PATH:/usr/local/bin/
+composer -V
+
+
+###Modify the configuration files
+sudo chmod 766 /etc/apache2/httpd.conf
+sudo cp /etc/apache2/httpd.conf /etc/apache2/httpd.conf.old
+sudo chmod 766 /etc/apache2/httpd.conf.old
+sudo echo -e &quot;ServerName localhost \t 
+AddType application/x-httpd-php .php \t
+AddHandler cgi-script .cgi \t
+&lt;Directory /&gt; \t
+DirectoryIndex index.php index.html index.var \t
+&lt;/Directory&gt; \t
+LoadModule php7_module /usr/lib64/apache2/libphp7.so \t
+LoadModule rewrite_module /usr/lib64/apache2/mod_rewrite.so \t
+LoadModule version_module /usr/lib64/apache2/mod_version.so \t
+DocumentRoot /srv/www/htdocs \t
+&lt;Directory /srv/www/htdocs&gt;  \t
+Options Indexes FollowSymLinks \t
+AllowOverride all \t
+Require all granted \t
+&lt;/Directory&gt; \t &quot; &gt;&gt;  /etc/apache2/httpd.conf
+
+sudo chmod 766 /etc/apache2/default-server.conf
+sudo cp /etc/apache2/default-server.conf /etc/apache2/default-server.conf.old
+sudo chmod 766 /etc/apache2/default-server.conf.old
+
+sudo sed -i &apos;24s/Options None/Options Indexes FollowSymLinks/&apos; /etc/apache2/default-server.conf 
+sudo sed -i &apos;28s/AllowOverride None/AllowOverride All/&apos; /etc/apache2/default-server.conf 
+
+
+sudo diff -u /etc/apache2/httpd.conf.old /etc/apache2/httpd.conf || true
+sudo diff -u /etc/apache2/default-server.conf.old /etc/apache2/default-server.conf || true
+
+
+
+sudo a2enmod rewrite
+sudo a2enmod php
+
+##download magento source 
+cd /srv/www/htdocs
+sudo chmod -R a+w /srv/www/htdocs
+git clone https://github.com/magento/magento2.git
+cd magento2
+git checkout 2.2.2
+composer install
+
+sudo /usr/sbin/groupadd wwwrun
+sudo  usermod -g wwwrun test
+cd /srv/www/htdocs/magento2 &amp;&amp; sudo find var vendor pub/static pub/media app/etc -type f -exec chmod ugo+w {} \; &amp;&amp; sudo find var vendor pub/static pub/media app/etc -type d -exec chmod ugo+w {} \; &amp;&amp; sudo chown -R :wwwrun . &amp;&amp; sudo chmod ugo+x bin/magento
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @cgopi</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,184 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@3.0.1">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <url>https://github.com/apache/flume.git</url>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>flume-1.7</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions>
+      <hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+        <relativeTargetDir>flume</relativeTargetDir>
+      </hudson.plugins.git.extensions.impl.RelativeTargetDirectory>
+    </extensions>
+  </scm>
+  <assignedNode>dc2_sl12-SP2_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Install Dependencies
+sudo zypper install -y  java-1_8_0-ibm  java-1_8_0-ibm-devel  ant tar wget git telnet
+
+# Set Environment Variables
+export JAVA_HOME=/usr/lib64/jvm/java
+export PATH=$PATH:$JAVA_HOME/bin
+export WORK_DIR=`pwd`
+
+# Change working directory
+wget http://apache.cs.utah.edu/maven/maven-3/3.2.5/source/apache-maven-3.2.5-src.tar.gz 
+tar -zxvf apache-maven-3.2.5-src.tar.gz 
+cd apache-maven-3.2.5
+export M2_HOME=&quot;$WORK_DIR/apache-maven-3.2.5/maven&quot;
+export PATH=$PATH:/$M2_HOME/bin
+
+# Run ANT to download dependencies, build Maven, and install
+ant  -Dmaven.test.skip=true
+export MAVEN_OPTS=&quot;-Xms1024m -Xmx3000m -XX:MaxPermSize=3000m&quot;
+cd ..
+
+sudo zypper install -y tar wget autoconf libtool automake gcc-c++ make git bzip2 curl unzip zlib zlib-devel
+export WORK_DIR=`pwd`
+
+git clone https://github.com/google/protobuf.git
+cd protobuf
+git checkout v3.2.0
+
+./autogen.sh &amp;&amp; ./configure &amp;&amp; make &amp;&amp; make check &amp;&amp; sudo make install
+export LD_LIBRARY_PATH=/usr/local/lib
+export PATH=$PATH:/usr/local/bin
+protoc --version
+ 
+cd $WORK_DIR/flume
+
+export MAVEN_OPTS=&quot;-Xms1024m -Xmx1024m -XX:MaxPermSize=1024m&quot;
+
+sed -i &apos;s/1.1.0/1.1.2/&apos; pom.xml
+
+mvn install -DskipTests -Drat.numUnapprovedLicenses=100
+
+
+# Verify Flume is installed correctly and working.
+#cd $WORK_DIR/flume/flume-ng-dist/target/apache-flume-1.6.0-bin/apache-flume-1.6.0-bin
+#cd /home/test/workspace/ApacheFlume_SELS12SP1_s390x/flume/flume-ng-dist/target/apache-flume-1.7.0-bin/apache-flume-1.7.0-bin
+cd $WORK_DIR/flume/flume-ng-dist/target/apache-flume-1.7.0-bin/apache-flume-1.7.0-bin
+
+cat &gt; example.conf &lt;&lt;- EOM
+# Name the components on this agent
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+# Describe/configure the source
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = localhost
+a1.sources.r1.port = 44444
+
+# Describe the sink
+a1.sinks.k1.type = logger
+
+# Use a channel which buffers events in memory
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 1000
+a1.channels.c1.transactionCapacity = 100
+
+# Bind the source and sink to the channel
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+EOM
+
+# Remove old log if exists
+rm -f flume_log.log
+
+bin/flume-ng agent --conf conf --conf-file example.conf --name a1 -Dflume.root.logger=INFO,console &gt; flume_log.log 2&gt;&amp;1 &amp;
+
+sleep 15
+
+cat &gt; connect_server.py &lt;&lt;- EOM
+import socket, select, string, sys
+
+end_session = False
+if __name__ == &quot;__main__&quot;:
+    host = &apos;127.0.0.1&apos;
+    port = 44444
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(2)
+
+    # connect to remote host
+    try :
+        s.connect((host, port))
+    except :
+        sys.exit()
+
+    while not end_session:
+        socket_list = [sys.stdin, s]
+        read_sockets, write_sockets, error_sockets = select.select(socket_list , [], [])
+        for sock in read_sockets:
+            if sock == s:
+                data = sock.recv(4096)
+                if not data :
+                    sys.exit()
+                else :
+                    sys.stdout.write(data)
+            else :
+                msg = sys.stdin.readline()
+                s.send(msg)
+                end_session = True
+
+EOM
+
+echo &quot;sample message&quot; | python connect_server.py
+
+sleep 15
+
+if grep -q &quot;sample message&quot; &quot;flume_log.log&quot;; then 
+	exit 0
+else
+	exit 1
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+  </publishers>
+  <buildWrappers/>
+</project>

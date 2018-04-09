@@ -1,0 +1,101 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.04_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 0 16 * *</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo apt-get install -y  wget tar unzip git make gcc maven
+export SRC_ROOT=`pwd`
+
+cd $SRC_ROOT/
+wget http://public.dhe.ibm.com/ibmdl/export/pub/systems/cloud/runtimes/java/8.0.4.10/linux/s390x/ibm-java-s390x-sdk-8.0-4.10.bin
+sudo chmod +x ibm-java-s390x-sdk-8.0-4.10.bin
+echo &quot;LICENSE_ACCEPTED=TRUE\nUSER_INSTALL_DIR=/opt/ibm/java-s390x-80\n-fileOverwrite_/opt/ibm/java-s390x-80_uninstall/uninstall.lax=Yes&quot; &gt; installer.properties
+cat installer.properties
+sudo ./ibm-java-s390x-sdk-8.0-4.10.bin -f installer.properties -i silent 	
+export JAVA_HOME=/opt/ibm/java-s390x-80
+export PATH=$JAVA_HOME/bin:$PATH
+java -version
+
+cd $SRC_ROOT/
+git clone https://github.com/linux-on-ibm-z/mule.git
+cd mule
+git checkout mule-3.8.4-s390x
+
+cd $SRC_ROOT/mule
+export PATH=$PATH:$SRC_ROOT/mule/distributions/standalone/src/main/resources/conf
+
+mvn clean install -DskipDistributions=false -DskipTests -Pdistributions -fn
+
+tar xzvf $SRC_ROOT/mule/distributions/standalone/target/mule-standalone-3.8.4.tar.gz -C $SRC_ROOT
+export PATH=$PATH:$SRC_ROOT/mule-standalone-3.8.4/bin
+
+cd $SRC_ROOT
+wget http://wrapper.tanukisoftware.com/download/3.5.30/wrapper-linux-390-64-3.5.30-st.tar.gz
+tar -xvzf wrapper-linux-390-64-3.5.30-st.tar.gz
+cp $SRC_ROOT/wrapper-linux-390-64-3.5.30-st/bin/wrapper $SRC_ROOT/mule-standalone-3.8.4/lib/boot/exec
+	
+mule
+cd $SRC_ROOT/mule 
+mvn clean install -DskipDistributions=false -fn</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@bhatekar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

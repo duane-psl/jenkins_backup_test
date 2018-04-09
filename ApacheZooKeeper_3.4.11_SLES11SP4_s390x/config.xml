@@ -1,0 +1,183 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl11-SP4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;zookeeper&quot;
+published_version=&quot;3.4.11&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+#------------------------
+sudo zypper up -y
+sudo zypper install -y git gcc-c++ make tar wget-openssl1 java-1_7_0-ibm java-1_7_0-ibm-devel libcppunit-devel libtool net-tools xz awk
+
+rm -rf source_root
+mkdir source_root
+cd source_root
+export WD=`pwd`
+echo $WD
+export JAVA_HOME=/usr/lib64/jvm/java-1.7.0-ibm-1.7.0/
+export PATH=/usr/local/bin:$PATH:$JAVA_HOME/bin
+echo $PATH
+java -version
+
+cd $WD
+wget http://ftp.gnu.org/gnu/m4/m4-1.4.17.tar.xz 
+tar xf m4-1.4.17.tar.xz
+cd m4-1.4.17 
+./configure 
+make 
+sudo make install
+
+cd $WD
+wget http://archive.apache.org/dist/ant/binaries/apache-ant-1.9.4-bin.tar.gz
+tar zxf apache-ant-1.9.4-bin.tar.gz 
+
+export ANT_HOME=$WD/apache-ant-1.9.4
+export PATH=$PATH:$ANT_HOME/bin
+
+
+cd $WD
+wget http://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.xz
+tar xf autoconf-2.69.tar.xz
+cd autoconf-2.69
+./configure 
+make 
+sudo make install
+
+cd $WD
+wget http://ftp.gnu.org/gnu/automake/automake-1.12.tar.xz
+tar xf automake-1.12.tar.xz
+cd automake-1.12
+./configure 
+make
+sudo make install
+sudo cp automake /usr/bin/
+
+
+#build zookepper
+cd $WD
+git clone git://github.com/apache/zookeeper
+cd $WD/zookeeper
+git checkout tags/release-3.4.11
+
+ant compile
+
+#ant compile_jute
+
+cd src/c
+ACLOCAL=&quot;aclocal -I /usr/share/aclocal&quot; autoreconf -if
+ 
+
+./configure 
+make
+sudo make install
+sudo make distclean
+     
+cd $WD/zookeeper
+ant jar
+ant test | tee test.log
+
+# Add conf file
+sudo  bash -c &quot;cat &gt; conf/zoo.cfg&quot; &lt;&lt;&apos;EOF&apos;
+	
+# The number of milliseconds of each tick
+tickTime=2000
+# the directory where the snapshot is stored.
+# do not use /tmp for storage, /tmp here is just
+# example sakes.
+dataDir=/tmp/zookeeper
+# the port at which the clients will connect
+clientPort=2181
+ 
+EOF
+
+sudo bin/zkServer.sh start | tee logfile.log
+
+cat logfile.log | grep STARTED
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12-sp3</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 4</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Install dependencies
+sudo zypper update -y
+sudo zypper install -y curl apache2 apache2-devel tar wget git-core mariadb gcc libtool autoconf make pcre pcre-devel libxml2 libxml2-devel libexpat-devel
+
+#Install PHP  
+wget http://www.php.net/distributions/php-5.6.8.tar.gz 
+tar xvzf php-5.6.8.tar.gz &amp;&amp; cd php-5.6.8
+./configure --prefix=/usr/local/php --with-apxs2=/usr/sbin/apxs2 --with-config-file-path=/usr/local/php --with-mysql --with-zlib
+make  
+sudo make install
+#cd ..
+
+#Make changes in the configuration file
+
+sudo chmod 777  /etc/apache2/httpd.conf
+line=&quot;\/srv\/www\/htdocs&quot;
+line_new=&quot;\/srv\/www\/htdocs\/WordPress&quot;
+sudo sed -i &quot;s/$line/$line_new/g&quot; /etc/apache2/default-server.conf
+
+sudo echo -e &quot;AddType application/x-httpd-php .php&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot; DirectoryIndex index.php &quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;LoadModule php5_module /usr/lib64/apache2/libphp5.so&quot; &gt;&gt;  /etc/apache2/httpd.conf
+
+#Download and Install WordPress
+cd /srv/www/htdocs
+sudo rm -rf WordPress
+sudo git clone git://github.com/WordPress/WordPress.git
+cd WordPress
+sudo git checkout 4.9.4
+
+
+#Modify the WordPress configuration file
+sudo mv wp-config-sample.php wp-config.php 
+sudo sed -i &quot;s/localhost/127.0.0.1/&quot; wp-config.php
+sudo sed -i &quot;s/database_name_here/WORDPRESS/&quot; wp-config.php
+sudo sed -i &quot;s/username_here/Wordpress/&quot; wp-config.php
+sudo sed -i &quot;s/password_here/password/&quot; wp-config.php
+
+#Initialize MySQL server
+sudo /usr/bin/mysql_install_db --user=mysql
+sleep 60s
+sudo mkdir -p  /var/log/mysql
+sudo sed -i &apos;701s/hostname/echo $HOSTNAME/&apos; /usr/bin/mysqld_safe 
+sudo /usr/bin/mysqld_safe --user=mysql &amp;  
+sleep 60s
+sudo /usr/bin/mysql -e &quot;create database WORDPRESS&quot; 
+sudo /usr/bin/mysql -e &quot;create user &apos;Wordpress&apos;@&apos;localhost&apos; identified by &apos;password&apos;&quot; 
+sudo /usr/bin/mysql -e &quot;grant all privileges on WORDPRESS.* to &apos;Wordpress&apos;@&apos;localhost&apos; identified by &apos;password&apos; with GRANT OPTION&quot;  
+
+sudo /usr/sbin/httpd -D BACKGROUND
+
+curl http://127.0.0.1:80
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room></room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>false</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

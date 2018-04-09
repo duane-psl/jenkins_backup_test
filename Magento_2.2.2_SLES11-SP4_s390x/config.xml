@@ -1,0 +1,203 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>-1</daysToKeep>
+        <numToKeep>6</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl11-SP4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 23 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 23 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>export WORK_DIR=`pwd`
+
+sudo zypper update -y
+
+export PATH=/usr/sbin/:$PATH
+
+sudo zypper install -y patch gcc-c++ tar wget-openssl1 curl-openssl1 vim gcc make net-snmp net-snmp-devel git apache2 apache2-devel libcurl-devel libxml2 libxml2-devel freetype2 freetype2-devel libtool pcre pcre-devel git-core autoconf libexpat-devel libjpeg-devel libpng-devel libmcrypt libmcrypt-devel curl-devel cron openssh libmcrypt-devel libicu-devel pkg-config libxslt-devel
+
+git config --global url.&quot;git://github.com/&quot;.insteadOf &quot;https://github.com/&quot;
+
+# Install dependencies
+sudo zypper install -y awk git gcc5 gcc5-c++ make cmake bison ncurses-devel util-linux tar wget glibc-devel-32bit zlib-devel cpp 
+sudo ln -fs /usr/bin/gcc-5 /usr/bin/gcc
+sudo ln -fs /usr/bin/g++-5 /usr/bin/g++
+sudo ln -fs /usr/bin/gcc /usr/bin/cc
+
+wget --no-check-certificate http://www.cmake.org/files/v3.3/cmake-3.3.0.tar.gz
+	tar xzf cmake-3.3.0.tar.gz
+	cd cmake-3.3.0
+	./bootstrap --prefix=/usr
+	gmake
+	sudo gmake install
+    cmake --version  
+    
+### Install MySQL
+cd $WORK_DIR
+git clone https://github.com/mysql/mysql-server.git
+cd mysql-server
+git checkout tags/mysql-5.7.20
+
+
+wget https://superb-sea2.dl.sourceforge.net/project/boost/boost/1.59.0/boost_1_59_0.tar.gz
+#wget http://sourceforge.net/projects/boost/files/boost/1.59.0/boost_1_59_0.tar.gz
+	tar xzf boost_1_59_0.tar.gz
+    cmake -DCMAKE_C_COMPILER=/usr/bin/cc -DCMAKE_CXX_COMPILER=/usr/bin/g++ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=.
+    gmake 
+sudo gmake install
+
+
+### Post installation setup
+if !(getent passwd mysql); then
+    sudo /usr/sbin/useradd mysql
+    sudo /usr/sbin/groupadd mysql
+fi
+cd /usr/local/mysql
+sudo chown -R mysql .
+sudo chgrp -R mysql .
+
+cd /usr/local/mysql/bin
+sudo ./mysqld  --initialize-insecure --user=mysql &amp;
+sleep 30
+sudo ./mysqld_safe --user=mysql &amp;
+sleep 30
+
+sudo ./mysql -e &quot;create database magento&quot;
+sudo ./mysql -e &quot;create user &apos;magento&apos;@&apos;localhost&apos; &quot;
+sudo ./mysql -e &quot;grant all privileges on magento.* to &apos;magento&apos;@&apos;localhost&apos;&quot;
+
+
+###Install PHP
+cd $WORK_DIR
+sudo rm -rf php-7.0.23
+wget http://www.php.net/distributions/php-7.0.23.tar.gz  
+tar xvzf php-7.0.23.tar.gz
+cd php-7.0.23
+./configure --with-apxs2=/usr/sbin/apxs2 --without-pcre-jit --with-openssl --enable-soap --with-libxml-dir=/usr/lib64 --with-mysqli --with-gd --with-jpeg-dir=/usr/include/jpeglib.h --with-png-dir --with-pdo_mysql --with-curl  --with-mcrypt --enable-mbstring --enable-intl --enable-zip --with-xsl --with-freetype-dir=/usr/lib64/
+make   
+sudo make install
+sudo cp ./php.ini-development /usr/local/php/php.ini 
+
+export PATH=$PATH:/usr/local/php/bin:/usr/local/bin/php:/usr/local/lib/php:/usr/local/php
+/usr/local/bin/php -v
+
+###Install Composer
+cd $WORK_DIR
+curl -sS https://getcomposer.org/installer | /usr/local/bin/php
+sudo mv composer.phar /usr/local/bin/composer
+chmod +x /usr/local/bin/composer
+export PATH=$PATH:/usr/local/bin/
+composer -V
+
+
+###Modify the configuration files
+sudo chmod 766 /etc/apache2/httpd.conf
+sudo cp /etc/apache2/httpd.conf /etc/apache2/httpd.conf.old
+sudo chmod 766 /etc/apache2/httpd.conf.old
+
+sudo sed -i &apos;192d&apos;  /etc/apache2/httpd.conf 
+sudo echo -e &quot;ServerName localhost&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;AddType application/x-httpd-php .php&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;AddHandler cgi-script .cgi&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;DirectoryIndex index.php index.html index.var&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;LoadModule php7_module /usr/lib64/apache2/libphp7.so&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;LoadModule rewrite_module /usr/lib64/apache2/mod_rewrite.so&quot; &gt;&gt;  /etc/apache2/httpd.conf
+sudo echo -e &quot;LoadModule version_module /usr/lib64/apache2/mod_version.so&quot; &gt;&gt;  /etc/apache2/httpd.conf
+
+sudo diff -u /etc/apache2/httpd.conf.old /etc/apache2/httpd.conf || true
+
+sudo chmod 766 /etc/apache2/default-server.conf
+sudo cp /etc/apache2/default-server.conf /etc/apache2/default-server.conf.old
+sudo chmod 766 /etc/apache2/default-server.conf.old
+sudo sed -i &apos;22s/Options None/Options Indexes FollowSymLinks/&apos; /etc/apache2/default-server.conf 
+sudo sed -i &apos;26s/AllowOverride None/AllowOverride All/&apos; /etc/apache2/default-server.conf 
+
+sudo diff -u /etc/apache2/default-server.conf.old /etc/apache2/default-server.conf || true
+
+###Download Magento source code
+cd /srv/www/htdocs
+sudo chmod -R a+w /srv/www/htdocs
+sudo rm -vrf magento2
+git clone https://github.com/magento/magento2.git
+cd magento2
+git checkout 2.2.2
+composer install
+
+sudo /usr/sbin/groupadd wwwrun || true
+sudo  usermod -g wwwrun test || true
+cd /srv/www/htdocs/magento2 &amp;&amp; sudo find var vendor pub/static pub/media app/etc -type f -exec chmod ugo+w {} \; &amp;&amp; sudo find var vendor pub/static pub/media app/etc -type d -exec chmod ugo+w {} \; &amp;&amp; sudo chown -R :wwwrun . &amp;&amp; sudo chmod ugo+x bin/magento
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @cgopi</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

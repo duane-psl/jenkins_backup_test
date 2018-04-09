@@ -1,0 +1,207 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>15/9/16&#xd;
+Job has passed on private node </description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12-8192MB</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 1 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 1 * * 3
+</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command># Install scons
+sudo zypper install -y scons wget gcc-c++ patch
+
+cd /home/test/
+mkdir source
+cd source
+git clone https://github.com/linux-on-ibm-z/mongo mongo
+cd mongo
+git checkout v3.2-s390
+
+echo &apos;{ &quot;version&quot;: &quot;3.2.0&quot;, &quot;githash&quot;: &quot;b80311d7fcfaae95c434ade551949921925234e6&quot; }&apos; &gt; version.json
+
+sudo scons --opt --allocator=system all
+
+
+## Build MongoDB Tools
+#cd /home/test/source
+#git clone https://github.com/mongodb/mongo-tools
+#cd mongo-tools
+#git checkout r3.2.0
+
+# Build gccgo
+#cd /home/test/source
+#sudo zypper install -y wget tar make flex subversion gcc gcc-c++ binutils-devel bzip2
+#svn co svn://gcc.gnu.org/svn/gcc/trunk gcc_srcDir
+#cd gcc_srcDir
+#./contrib/download_prerequisites
+#mkdir build
+#cd build
+#../../gcc_srcDir/configure \
+#--prefix=&quot;/opt/gccgo&quot; \
+#--enable-shared --with-system-zlib --enable-threads=posix \
+#--disable-multilib --enable-__cxa_atexit --enable-checking \
+#--enable-gnu-indirect-function --enable-languages=&quot;c,c++,go&quot; \
+#--disable-bootstrap
+#make all
+#sudo make install
+#export PATH=/opt/gccgo/bin:$PATH
+#export LD_LIBRARY_PATH=/opt/gccgo/lib64:$LD_LIBRARY_PATH
+
+
+#cd /home/test/source/mongo-tools
+#chmod +777 build.sh
+#cp /home/test/work/Mongo_3.0_rh7_s390x/build_c.sh /home/test/source/mongo-tools/
+#diff build.sh build_c.sh &gt; build_pn.sh
+#ls -l | grep &quot;build_c.sh&quot;
+#chmod +777 build_c.sh
+#ls -l | grep &quot;build_c.sh&quot;
+#diff -u build.sh build_c.sh &gt; build_pn.sh
+#patch &lt; build_pn.sh
+
+#sed -i &quot;s/-ldflags/\-gccgoflags \&apos;-static-libgo\&apos; -ldflags/&quot; build.sh
+
+#cat -n build.sh
+#./build.sh
+
+
+
+## Testing
+#cd /home/test/source
+#git clone git://github.com/mongodb/mongo-python-driver.git pymongo
+#cd pymongo
+#sudo python setup.py install
+#cd /home/test/source/mongo
+
+# Running Test cases and checking against migration steps
+
+#cd /home/test/source/mongo
+#set +e
+#python buildscripts/resmoke.py --suites=core &gt; integration_test.log
+
+#python buildscripts/resmoke.py --suites=unittests &gt; cpp_test.log
+
+#./dbtest &gt; db_test.log
+
+#sed -i &apos;s/[0-9].*-[0-9].*-[0-9].*T[0-9].*:[0-9].*:[0-9].*.[0-9].*+0000//g&apos; cpp_test.log
+#sed -i &apos;s/pid.[0-9]*//g&apos; cpp_test.log
+#sed -i &apos;s/ran.*seconds//g&apos; cpp_test.log
+#sed -i &apos;s/time secs:.*[0-9].*.[0-9].*//g&apos; cpp_test.log
+#sed -i &apos;/^\[cpp_unit.*Program/d&apos; cpp_test.log
+ 
+#sed -i &apos;s/[0-9].*-[0-9].*-[0-9].*T[0-9].*:[0-9].*:[0-9].*.[0-9].*+0000//g&apos; db_test.log
+#sed -i &apos;s/0x.*//g&apos; db_test.log
+#sed -i &apos;s/time secs:.*[0-9].*.[0-9].*//g&apos; db_test.log
+#sed -i &apos;s/pid.[0-9]*//g&apos; db_test.log
+#sed -i &apos;/SHARDING/d&apos; db_test.log
+#sed -i &apos;/NETWORK/d&apos; db_test.log
+#sed -i &apos;/WRITE/d&apos; db_test.log
+#sed -i &apos;/COMMAND/d&apos;  db_test.log
+#sed -i &apos;/QUERY/d&apos; db_test.log
+#sed -i &apos;/INDEX/d&apos; db_test.log
+#sed -i &apos;/^stats/d&apos; db_test.log
+#sed -i &apos;/ticketHolder/d&apos; db_test.log
+#sed -i &apos;/MongoMutexTest/d&apos; db_test.log
+#sed -i &apos;/CondSlack/d&apos; db_test.log
+#sed -i &apos;/N5mongo12SimpleRWLockE/d&apos; db_test.log
+#sed -i &apos;/BEGIN BACKTRACE/,/dbtest/{//!d}&apos; db_test.log
+#sed -i &apos;/^-[0-9].*/d&apos; db_test.log
+#sed -i &apos;/\[testsuite\] { _id/d&apos; db_test.log
+#sed -i &apos;/^sleeptest/d&apos; db_test.log
+#sed -i &apos;/\[testsuite\] {/d&apos; db_test.log
+#sed -i &apos;/^AllTiming/d&apos; db_test.log
+#sed -i &apos;/^funcs/d&apos;   db_test.log
+#sed -i &apos;/^code/d&apos;   db_test.log
+#sed -i &apos;/^HelperTest/d&apos;   db_test.log
+#sed -i &apos;/^N5mongo11SimpleMutexE/d&apos;   db_test.log
+#sed -i &apos;/\[mongomutextest\]/d&apos;   db_test.log	
+#sed -i &apos;s/pinned cursor.*//g&apos; db_test.log
+#sed -i &apos;/^assert.eq/d&apos; db_test.log
+
+#sed -i &apos;s/[0-9].*-[0-9].*-[0-9].*T[0-9].*:[0-9].*:[0-9].*.[0-9].*+0000//g&apos;  integration_test.log
+#sed -i &apos;s/pid.[0-9]*//g&apos; integration_test.log
+
+ #echo $&apos;diff /home/test/reflogs/cpp_test.log cpp_test.log\ndiff /home/test/reflogs/db_test.log db_test.log\ndiff /home/test/reflogs/integration_test.log integration_test.log&apos; &gt; compare.sh
+ #chmod u+x compare.sh
+ #./compare.sh
+ 
+ 
+ #if (($? &gt; 0)); then
+ #echo &quot;Failure&quot;
+ #exit 1;
+ #else
+ #echo &quot;Success&quot;
+ #exit 0;
+ #fi
+ 
+ #diff /home/test/work/Mongo_3.0_rh7_s390x/cpp_test.log cpp_test.log  || exit 1;
+ #diff  /home/test/work/Mongo_3.0_rh7_s390x/db_test.log db_test.log || exit 1;
+ #diff /home/test/work/Mongo_3.0_rh7_s390x/integration_test.log integration_test.log || exit 1;
+ 
+ #set -e
+
+#
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

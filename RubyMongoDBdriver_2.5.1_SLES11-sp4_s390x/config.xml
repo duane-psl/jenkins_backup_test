@@ -1,0 +1,211 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>0</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>preeti_sles||dc2_sl11-SP4_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 6 </spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 6</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>homedir=`pwd`
+#Install dependencies
+sudo zypper install -y ruby ruby-devel make gcc gcc-c++
+
+
+# dependencies for mongoDB Server
+sudo zypper install -y net-snmp cyrus-sasl cyrus-sasl-plain cyrus-sasl-gssapi wget openssl timezone
+sudo zypper install -y libnetsnmpagent.so.15
+
+# dependencies for Ruby
+sudo zypper install -y bison libopenssl-devel libffi-devel readline-devel zlib-devel gdbm-devel ncurses-devel tcl-devel tk-devel sqlite3-devel gcc make awk wget tar bzip2 subversion gcc-c++ binutils-devel autoconf automake
+#sudo zypper install -y ncurses patch zlib zlib-devel git  unzip openssl-devel libtool net-tools libxslt-devel  libffi-devel  libbz2-devel xz
+sudo zypper install -y ncurses patch zlib git unzip openssl-devel libtool net-tools libxslt-devel libbz2-devel xz
+
+#Build gcc for ruby
+cd $homedir
+wget http://ftp.gnu.org/gnu/gcc/gcc-4.8.2/gcc-4.8.2.tar.bz2
+tar xvf gcc-4.8.2.tar.bz2
+cd gcc-4.8.2
+./contrib/download_prerequisites
+mkdir $homedir/gccbuild
+cd $homedir/gccbuild
+../gcc-4.8.2/configure  --prefix=&quot;/opt/gcc&quot;  --enable-shared --with-system-zlib --enable-threads=posix  --enable-__cxa_atexit --enable-checking --enable-gnu-indirect-function  --enable-languages=&quot;c,c++&quot; --disable-bootstrap --disable-multilib
+make all
+sudo make install
+export PATH=/opt/gcc/bin:$PATH
+export LD_LIBRARY_PATH=/opt/gcc/lib64:/opt/gcc/lib:$LD_LIBRARY_PATH
+sudo mv /usr/bin/gcc /usr/bin/gcc.bkup
+sudo ln -s /opt/gcc/bin/gcc /usr/bin/gcc
+gcc --version
+
+# Build OpenSSL
+cd $homedir
+sudo rm -rf openssl
+wget ftp://ftp.openssl.org/source/old/1.0.2/openssl-1.0.2.tar.gz
+tar -xf openssl-1.0.2.tar.gz
+cd openssl-1.0.2
+./config --prefix=/usr --openssldir=/usr/local/openssl shared
+make
+sudo make install
+openssl version
+
+
+#Build curl
+cd $homedir
+sudo rm -rf curl
+git clone git://github.com/curl/curl.git
+cd curl
+git checkout curl-7_52_1
+./buildconf 
+./configure --prefix=/usr/local --with-ssl --disable-shared
+make &amp;&amp; sudo make install
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib64
+export PATH=/usr/local/bin:$PATH
+
+#Generate ca-bundle.crt for curl
+echo insecure &gt;&gt; $HOME/.curlrc
+wget https://raw.githubusercontent.com/curl/curl/curl-7_53_0/lib/mk-ca-bundle.pl
+perl mk-ca-bundle.pl -k
+export SSL_CERT_FILE=`pwd`/ca-bundle.crt
+rm  $HOME/.curlrc
+
+
+#Build Ruby&gt;1.9.3 from Source
+cd $homedir
+wget http://cache.ruby-lang.org/pub/ruby/2.5/ruby-2.5.0.tar.gz
+tar zxf ruby-2.5.0.tar.gz
+cd ruby-2.5.0
+./configure LDFLAGS=&apos;-L$homedir/openssl&apos; --with-openssl-include=$homedir/openssl/include --with-openssl-dir=/usr/
+make
+sudo -E make install
+
+#Set the GEM environment
+export GEM_HOME=/home/test/.gem/ruby
+export PATH=/home/test/.gem/ruby/bin:$PATH
+
+#Install Ruby MongoDB 
+sudo gem install  mongo -v 2.5.1
+
+#Install and Start MongoDB server
+cd $homedir
+wget https://repo.mongodb.com/zypper/suse/11/mongodb-enterprise/3.6/s390x/RPMS/mongodb-enterprise-server-3.6.2-1.suse11.s390x.rpm
+sudo rpm -Uvh --noscripts mongodb-enterprise-server-3.6.2-1.suse11.s390x.rpm
+sudo mkdir -p db
+sudo /usr/bin/mongod --dbpath db &amp;
+sleep 40s
+
+
+
+echo -e &quot;{\&quot;_id\&quot;=&gt;BSON::ObjectId(&apos;000002aafe4122006d000002&apos;), \&quot;company\&quot;=&gt;\&quot;IBM\&quot;, \&quot;project\&quot;=&gt;\&quot;MongoDB Driver\&quot;, \&quot;language\&quot;=&gt;\&quot;Ruby\&quot;, \&quot;version\&quot;=&gt;\&quot;2.5.1\&quot;} 
+ {\&quot;_id\&quot;=&gt;1, \&quot;line\&quot;=&gt;1} 
+ {\&quot;_id\&quot;=&gt;2, \&quot;line\&quot;=&gt;2} 
+ {\&quot;_id\&quot;=&gt;3, \&quot;line\&quot;=&gt;3} &quot;&gt; expected_result.log 
+
+
+echo -e &quot;
+require \&quot;mongo\&quot;
+
+server=\&quot;localhost\&quot;
+test_db=\&quot;ibm_test_db2\&quot;
+collection=\&quot;mongodb_ruby_driver_2_x\&quot;
+
+server_addr=server + \&quot;:27017\&quot;
+
+Mongo::Logger.logger.level = ::Logger::FATAL   # hide DEBUG logging
+
+db = Mongo::Client.new([ server_addr ], :database =&gt; test_db)
+
+db[:collection].drop
+
+result = db[:collection].insert_one({ company: \&quot;IBM\&quot; , project: \&quot;MongoDB Driver\&quot;, language: \&quot;Ruby\&quot;, version: \&quot;2.5.1\&quot;})
+
+3.times { |i| db[:collection].insert_one({ _id: i+1, line: i+1 }) }
+
+db[:collection].find().each do |document|
+  printf(\&quot;%s \\\n \&quot;, document)#=&gt; Yields a BSON::Document.
+end&quot; &gt; test.rb
+
+export GEM_HOME=~/.gem/ruby
+ruby test.rb &gt; test_result.log
+
+
+sed -i &quot;s/ObjectId(&apos;[0-9 a-z]*&apos;)/&apos;_id&apos;/&quot; test_result.log
+sed -i &quot;s/ObjectId(&apos;[0-9 a-z]*&apos;)/&apos;_id&apos;/&quot; expected_result.log
+
+sed &apos;/^\s*$/d&apos;  test_result.log &gt; file1.txt
+sed &apos;/^\s*$/d&apos;  expected_result.log &gt; file2.txt
+
+
+diff --suppress-common-lines file1.txt file2.txt
+
+
+
+if [ &quot;$?&quot; -eq 0 ]; then
+  echo &quot;OUTPUT FROM DATABASE&quot;
+  cat file1.txt
+  exit 0
+else
+  exit 1
+fi</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@preeti.khorjuvenkar,@ketank</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

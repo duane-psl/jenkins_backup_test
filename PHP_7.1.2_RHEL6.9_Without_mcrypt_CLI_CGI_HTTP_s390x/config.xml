@@ -1,0 +1,181 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>PHP Without mcrypt and intl extensions (CLI and CGI SAPI and HTTP)</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 1</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 1</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>source /home/test/.bashrc
+
+export WORK_DIR=`pwd`
+
+# Install dependencies
+export PATH=/usr/local/bin:$PATH
+echo $PATH
+sudo yum install -y autoconf automake bison flex bzip2-devel curl-devel \
+                    freetype-devel gcc gcc-c++ gdbm-devel git gmp-devel libdbi libjpeg-turbo-devel \
+                    libpng-devel libtool libxml2-devel libXpm-devel libxslt-devel make mysql-devel net-snmp-devel \
+                    openldap-devel openssl-devel pcre-devel pkgconfig postgresql-devel readline-devel unixODBC-devel vim wget
+# Get the source code      
+cd $WORK_DIR
+git clone https://github.com/php/php-src.git
+cd php-src
+git checkout tags/php-7.1.2   
+
+# Symlink LDAP libraries and GMP header
+sudo ln -sf /usr/lib64/libldap.so /usr/lib/libldap.so
+sudo ln -sf /usr/lib64/liblber.so /usr/lib/liblber.so
+sudo ln -sf /usr/include/gmp-s390x.h /usr/include/gmp.h
+
+#Build PHP
+
+#a. Without mcrypt and intl extensions:
+#CLI and CGI SAPIs HTTP
+sudo yum install -y httpd httpd-devel
+
+#Build with apxs2
+cd $WORK_DIR/php-src
+./buildconf --force
+./configure --datadir=/usr/local/share/php --localstatedir=/var --mandir=/usr/local/share/man --prefix=/usr/local --sysconfdir=/usr/local/etc --enable-bcmath --enable-calendar --enable-ctype --with-curl --enable-dba=shared --enable-exif --enable-filter --enable-flatfile --enable-fpm --enable-ftp --enable-gd-native-ttf --enable-inifile --enable-mbstring --enable-mysqlnd --enable-opcache --enable-pcntl --enable-shmop --enable-simplexml --enable-sockets --enable-sysvsem --enable-sysvshm --enable-sysvmsg --enable-xmlreader --enable-xmlwriter --enable-zend-signals --enable-zip --disable-phpdbg --disable-phpdbg-webhelper --with-apxs2 --with-bz2 --with-config-file-path=/usr/local/etc --with-config-file-scan-dir=/usr/local/etc/conf.d --with-fpm-group=apache --with-fpm-user=apache --with-freetype-dir --with-gd --with-gdbm --with-gettext --with-gmp --with-iconv --with-jpeg-dir --with-kerberos --with-ldap --with-ldap-sasl --with-mysql-sock=/var/lib/mysql/mysql.sock --with-mysqli=mysqlnd --with-openssl --with-pcre-regex --with-pdo-mysql=mysqlnd --with-pdo-odbc=unixODBC,/usr --with-pdo-pgsql --with-pdo-sqlite --with-pgsql --with-png-dir --with-readline --with-snmp --with-sqlite3 --with-unixODBC=/usr --with-xpm-dir=/usr --with-xsl --with-zlib --without-pcre-jit
+make clean
+make -j$(cat /proc/cpuinfo | grep processor | wc -l)
+
+make test 
+#(**NOTE:There are few test case failures which are also observed on Intel x86 platform. These failures can be ignored.)
+
+sudo make install
+sudo install -m644 php.ini-production /usr/local/etc/php.ini
+sudo sed -i &apos;s@php/includes&quot;@&amp;\ninclude_path = &quot;.:/usr/local/lib/php&quot;@&apos; /usr/local/etc/php.ini
+php -v
+
+#Configure PHP
+# PHP-FPM
+#Modify the file /usr/local/etc/php-fpm.conf.default to set php-fpm pid
+sudo cp /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf.default.orig 
+sudo sed -i &apos;17d&apos; /usr/local/etc/php-fpm.conf.default
+sudo sed -i &quot;17i pid = run/php-fpm.pid&quot; /usr/local/etc/php-fpm.conf.default
+
+sudo mv /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf
+sudo mv /usr/local/etc/php-fpm.d/www.conf.default /usr/local/etc/php-fpm.d/www.conf
+
+cp $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in.orig
+sudo sed -i &apos;13d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;13i prefix=/usr/local&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+
+sudo sed -i &apos;14d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;14i exec_prefix=/usr/local&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &apos;16d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;16i php_fpm_BIN=/usr/local/sbin/php-fpm&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &apos;17d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;17i php_fpm_CONF=/usr/local/etc/php-fpm.conf&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &apos;18d&apos; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+sudo sed -i &quot;18i php_fpm_PID=/var/run/php-fpm.pid&quot; $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in
+
+sudo cp $WORK_DIR/php-src/sapi/fpm/init.d.php-fpm.in /etc/init.d/php-fpm
+sudo chmod 755 /etc/init.d/php-fpm
+
+sudo chkconfig --levels 235 php-fpm on
+sudo /etc/init.d/php-fpm start
+
+#Zend OPcache
+#Modify the file /usr/local/etc/php.ini to enable Zend OPcache:
+sudo cp /usr/local/etc/php.ini /usr/local/etc/php.ini.orig
+sudo sed -i &quot;1784i zend_extension=opcache.so&quot; /usr/local/etc/php.ini
+
+php -v
+
+if php -v | grep &quot;Zend OPcache v7.1.2&quot;; then
+  echo &quot;Done&quot;
+  
+else
+  exit 1
+fi 
+cd $WORK_DIR
+sudo chmod 766 /etc/httpd/conf/httpd.conf
+cd /etc/httpd/conf
+
+sudo echo -e &quot;&lt;FilesMatch \.php$&gt;&quot; &gt;&gt; httpd.conf 
+sudo echo -e &quot;SetHandler application/x-httpd-php&quot; &gt;&gt; httpd.conf 
+sudo echo -e &quot;&lt;/FilesMatch&gt;&quot; &gt;&gt; httpd.conf 
+
+sudo service httpd restart
+sleep 2m
+
+cd /var/www/html
+sudo touch testphp.php
+
+sudo chmod 766 testphp.php
+sudo echo -e &quot;&lt;?php&quot; &gt;&gt; testphp.php
+sudo echo -e &quot;phpinfo();&quot; &gt;&gt; testphp.php
+sudo echo -e &quot;?&gt;&quot; &gt;&gt; testphp.php
+  
+cat -n testphp.php
+ 
+   
+sudo httpd -k restart 
+curl http://127.0.0.1:80/testphp.php
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned,@chandranana.naik,@ketank</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,155 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>anurodh</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>####################### Building Istio Proxy on RHEL (7.1, 7.2, 7.3, 7.4) #######################
+#Install Dependencies
+source /home/test/.bashrc
+sudo yum install -y git java-1.8.0-openjdk-devel zip gcc-c++ unzip python libtool automake cmake golang curl wget gcc vim patch binutils-devel bzip2 make
+
+export BUILDDIR=`pwd`
+ls -la
+
+#Build GCC 6.3.0
+
+cd $BUILDDIR/
+sudo yum install -y wget
+wget ftp://gcc.gnu.org/pub/gcc/releases/gcc-6.3.0/gcc-6.3.0.tar.gz  
+tar -xvzf gcc-6.3.0.tar.gz  
+cd gcc-6.3.0/  
+./contrib/download_prerequisites  
+cd $BUILDDIR/  
+mkdir gcc_build  
+cd gcc_build/  
+../gcc-6.3.0/configure --prefix=&quot;/opt/gcc&quot; --enable-shared --with-system-zlib --enable-threads=posix --enable-__cxa_atexit --enable-checking --enable-gnu-indirect-function --enable-languages=&quot;c,c++&quot; --disable-bootstrap --disable-multilib  
+make  
+sudo make install  
+export PATH=/opt/gcc/bin:$PATH  
+sudo ln -sf /opt/gcc/bin/gcc /usr/bin/gcc
+export C_INCLUDE_PATH=/opt/gcc/lib/gcc/s390x-ibm-linux-gnu/6.3.0/include  
+export CPLUS_INCLUDE_PATH=/opt/gcc/lib/gcc/s390x-ibm-linux-gnu/6.3.0/include
+sudo ln -sf /opt/gcc/lib64/libstdc++.so.6.0.22 /lib64/libstdc++.so.6
+export LD_LIBRARY_PATH=&apos;/opt/gcc/$LIB&apos;
+ls -la
+
+#Build Bazel version 0.8.0
+##Download Bazel
+cd $BUILDDIR/
+ls -la
+mkdir bazel &amp;&amp; cd bazel
+ls -la
+wget https://github.com/bazelbuild/bazel/releases/download/0.8.0/bazel-0.8.0-dist.zip
+unzip -o bazel-0.8.0-dist.zip
+chmod -R +w .
+
+## Note: While building Bazel, if build fails with an error java.lang.OutOfMemoryError: Java heap space, add below java ##options in scripts/bootstrap/compile.sh
+#cp $BUILDDIR/scripts/bootstrap/compile.sh $BUILDDIR/scripts/bootstrap/compile.sh.orig
+#sed -i  &apos;/run &quot;${JAVAC}&quot; -classpath &quot;${classpath}&quot; -sourcepath &quot;${sourcepath}&quot; \\/c\
+#run &quot;${JAVAC}&quot; -J-Xms1g -J-Xmx1g -classpath &quot;${classpath}&quot; -sourcepath &quot;${sourcepath}&quot; \\&apos; $BUILDDIR/scripts/bootstrap/compile.sh
+#diff -u $BUILDDIR/scripts/bootstrap/compile.sh.orig $BUILDDIR/scripts/bootstrap/compile.sh || true
+
+sed -i  &apos;/run &quot;${JAVAC}&quot; -classpath &quot;${classpath}&quot; -sourcepath &quot;${sourcepath}&quot; \\/c\ run &quot;${JAVAC}&quot; -J-Xms1g -J-Xmx1g -classpath &quot;${classpath}&quot; -sourcepath &quot;${sourcepath}&quot; \\&apos; scripts/bootstrap/compile.sh
+
+##Build Bazel
+bash ./compile.sh
+export PATH=$PATH:$BUILDDIR/bazel/output/
+bazel version
+
+#Download source code of envoy
+
+cd $BUILDDIR/
+wget https://github.com/envoyproxy/envoy/archive/e593fedc3232fbb694f3ec985567a2c7dff05212.zip
+unzip -o e593fedc3232fbb694f3ec985567a2c7dff05212.zip
+#[ -f &quot;envoy-e593fedc3232fbb694f3ec985567a2c7dff05212/&quot; ] &amp;&amp; mv &quot;envoy-e593fedc3232fbb694f3ec985567a2c7dff05212/&quot; envoy
+mv -f envoy-e593fedc3232fbb694f3ec985567a2c7dff05212/ envoy
+
+##Edit file /&lt;source_root&gt;/envoy/ci/build_container/build_recipes/backward.sh
+
+cp $BUILDDIR/envoy/ci/build_container/build_recipes/backward.sh $BUILDDIR/envoy/ci/build_container/build_recipes/backward.sh.orig
+sed -i &apos;/tar xf backward-cpp-&quot;$VERSION&quot;.tar.gz/a \sed -i &apos;\&apos;&apos;/uctx-&gt;uc_mcontext.regs-&gt;nip/a \\#elif defined(__s390x__)\\n\\                error_addr = reinterpret_cast&lt;void*&gt;(uctx-&gt;uc_mcontext.psw.addr);&apos;\&apos;&apos; backward-cpp-$VERSION/backward.hpp&apos; $BUILDDIR/envoy/ci/build_container/build_recipes/backward.sh
+diff -u $BUILDDIR/envoy/ci/build_container/build_recipes/backward.sh.orig $BUILDDIR/envoy/ci/build_container/build_recipes/backward.sh || true
+
+##Edit file /&lt;source_root&gt;/envoy/ci/build_container/build_recipes/boringssl.sh
+
+cp $BUILDDIR/envoy/ci/build_container/build_recipes/boringssl.sh $BUILDDIR/envoy/ci/build_container/build_recipes/boringssl.sh.orig
+sed -i &apos;/git reset --hard &quot;$COMMIT&quot;/a \sed -i &apos;\&apos;&apos;/OPENSSL_PNACL/a \\#elif defined(__s390x__)\\n\\#define OPENSSL_64_BIT&apos;&quot;&apos;&quot;&apos; include/openssl/base.h\nsed -i &apos;\&apos;&apos;/set(ARCH &quot;ppc64le&quot;)/a \\elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL &quot;s390x&quot;)\\n\\  set(ARCH &quot;s390x&quot;)&apos;&quot;&apos;&quot;&apos; CMakeLists.txt&apos; $BUILDDIR/envoy/ci/build_container/build_recipes/boringssl.sh
+diff -u $BUILDDIR/envoy/ci/build_container/build_recipes/boringssl.sh.orig $BUILDDIR/envoy/ci/build_container/build_recipes/boringssl.sh || true
+
+##Edit file /&lt;source_root&gt;/envoy/ci/build_container/build_recipes/luajit.sh
+
+cp $BUILDDIR/envoy/ci/build_container/build_recipes/luajit.sh	$BUILDDIR/envoy/ci/build_container/build_recipes/luajit.sh.orig
+sed -i &apos;/VERSION=2.0.5/,+4d&apos;  $BUILDDIR/envoy/ci/build_container/build_recipes/luajit.sh
+sed -i  &apos;/set -e/a\git clone https://github.com/linux-on-ibm-z/LuaJIT.git\ncd LuaJIT\ngit checkout v2.1&apos; $BUILDDIR/envoy/ci/build_container/build_recipes/luajit.sh
+diff -u $BUILDDIR/envoy/ci/build_container/build_recipes/luajit.sh.orig $BUILDDIR/envoy/ci/build_container/build_recipes/luajit.sh || true
+
+##Edit file /&lt;source_root&gt;/envoy/source/exe/signal_action.cc
+cp $BUILDDIR/envoy/source/exe/signal_action.cc $BUILDDIR/envoy/source/exe/signal_action.cc.orig
+sed -i  &apos;/__ss.__rip/a\#elif defined(__s390x__)\n    error_pc =  reinterpret_cast&lt;void*&gt;(ucontext-&gt;uc_mcontext.psw.addr);&apos; $BUILDDIR/envoy/source/exe/signal_action.cc
+diff -u $BUILDDIR/envoy/source/exe/signal_action.cc.orig $BUILDDIR/envoy/source/exe/signal_action.cc || true
+
+#Edit file /&lt;source_root&gt;/envoy/ci/prebuilt/BUILD (Only for SLES and RHEL)
+cp $BUILDDIR/envoy/ci/prebuilt/BUILD $BUILDDIR/envoy/ci/prebuilt/BUILD.orig
+sed -i -e &apos;s/srcs = \[/srcs = glob\(\[/g&apos; $BUILDDIR/envoy/ci/prebuilt/BUILD
+sed -i -e &apos;s/\&quot;thirdparty_build\/lib\/libgmock.a\&quot;,/\&quot;thirdparty_build\/lib\*\/libgmock.a\&quot;,/g&apos; $BUILDDIR/envoy/ci/prebuilt/BUILD
+sed -i -e &apos;s/\&quot;thirdparty_build\/lib\/libgtest.a\&quot;,/\&quot;thirdparty_build\/lib\*\/libgtest.a\&quot;,/g&apos; $BUILDDIR/envoy/ci/prebuilt/BUILD
+sed -i -e &apos;s/\]\,/\]\)\,/g&apos; $BUILDDIR/envoy/ci/prebuilt/BUILD
+diff -u $BUILDDIR/envoy/ci/prebuilt/BUILD.orig $BUILDDIR/envoy/envoy/ci/prebuilt/BUILD || true
+
+
+#Download source code of bazelbuild/rules_go version 0.8.0
+cd $BUILDDIR/
+if [ ! -d rules_go ] ; then
+    git clone https://github.com/bazelbuild/rules_go.git
+fi
+cd rules_go 
+git checkout 0.8.0
+
+##Edit file /&lt;source_root&gt;/rules_go/go/private/rules/stdlib.bzl
+
+sed -i  &apos;/&quot;CC&quot;: cc_path,/c\      &quot;CC&quot;: &quot;/usr/bin/gcc&quot;,&apos; $BUILDDIR/rules_go/go/private/rules/stdlib.bzl
+git diff 
+
+#Download source code of Istio Proxy version 0.4.0
+cd $BUILDDIR/
+if [ ! -d proxy ] ; then
+    git clone https://github.com/istio/proxy.git
+fi
+cd proxy &amp;&amp; git checkout 0.4.0
+
+##Edit file /&lt;source_root&gt;/proxy/WORKSPACE
+
+#cp $BUILDDIR/proxy/WORKSPACE $BUILDDIR/proxy/WORKSPACE.orig
+sed -i  &apos;/ENVOY_SHA = &quot;e593fedc3232fbb694f3ec985567a2c7dff05212&quot;/c\#ENVOY_SHA = &quot;e593fedc3232fbb694f3ec985567a2c7dff05212&quot;&apos; $BUILDDIR/proxy/WORKSPACE
+sed -i &apos;/http_archive(/,/url = \&quot;https:\/\/github.com\/envoyproxy\/envoy\/archive\/\&quot; + ENVOY_SHA + &quot;.zip&quot;,/d&apos; $BUILDDIR/proxy/WORKSPACE
+sed -i  &apos;/#ENVOY_SHA = &quot;e593fedc3232fbb694f3ec985567a2c7dff05212&quot;/a\local_repository(\n    name = &quot;envoy&quot;,\n    path = &quot;/home/test/workspace/IstioProxy_0.4.0_Rhel7.3_S390x/envoy&quot;,&apos; $BUILDDIR/proxy/WORKSPACE
+sed -i &apos;0,/git_repository/{/git_repository/d;}&apos; $BUILDDIR/proxy/WORKSPACE
+sed -i &apos;/ name = &quot;io_bazel_rules_go&quot;,/,+3d&apos;  $BUILDDIR/proxy/WORKSPACE
+sed -i  &apos;/api_dependencies()/a\local_repository(\n    name = &quot;io_bazel_rules_go&quot;,\n    path = &quot;/home/test/workspace/IstioProxy_0.4.0_Rhel7.3_S390x/rules_go&quot;,\n)&apos; $BUILDDIR/proxy/WORKSPACE
+
+git diff 
+
+#Build Istio Proxy
+cd $BUILDDIR/proxy
+make build
+ </command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers/>
+  <buildWrappers/>
+</project>

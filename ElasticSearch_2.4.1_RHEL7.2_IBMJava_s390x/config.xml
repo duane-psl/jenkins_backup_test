@@ -1,0 +1,166 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_rhel7.2-8192MB</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 11 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>rm -fr ES_HOME
+rm -rf elasticsearch-2.4.1
+
+sudo yum install -y git openssl java-1.8.0-ibm-devel.s390x java-1.8.0-ibm which svn wget tar unzip libtool autoconf make pcre  pcre-devel libxml2-devel expat-devel curl
+export ES_HOME=$(pwd)
+
+wget http://archive.apache.org/dist/maven/maven-3/3.3.3/binaries/apache-maven-3.3.3-bin.tar.gz &amp;&amp; tar -zxvf apache-maven-3.3.3-bin.tar.gz
+
+export JAVA_HOME=/usr/lib/jvm/java-ibm/
+MAVEN=&quot;$ES_HOME/apache-maven-3.3.3/bin&quot;
+export PATH=$PATH:$MAVEN
+export MAVEN_OPTS=&quot;-Xms1024m -Xmx1024m -XX:MaxPermSize=1024m&quot;
+export _JAVA_OPTIONS=&quot;-Xmx10g&quot;
+
+wget https://github.com/elastic/elasticsearch/archive/v2.4.1.zip &amp;&amp; unzip v2.4.1.zip
+
+cd elasticsearch-2.4.1
+#sed -i &apos;351 s/&quot;java.runtime.version&quot;/&quot;java.version&quot;/&apos; core/pom.xml
+sed -i &apos;367 s/java.runtime.version/java.version/g&apos; core/pom.xml
+
+
+#cd elasticsearch-2.4.1 &amp;&amp; mvn clean package -DskipTests
+
+mvn clean package -Des.node.mode=local -fn &gt; testlog.log 2&gt;&amp;1 || true
+
+cat testlog.log
+cat testlog.log | grep &quot;\.\.\. FAILURE&quot; &gt; testlog2.log
+cat testlog2.log
+sed -i &quot;s/ FAILURE.*/ FAILURE/&quot; testlog2.log
+
+echo &apos;[INFO] Plugin: Analysis: ICU .............................. FAILURE&apos; &gt; expected.log
+result=`diff testlog2.log expected.log`
+if [ -z &quot;$result&quot; ] ; then
+  exit 0
+else
+  exit 1
+fi
+
+
+cd ..
+cd elasticsearch-2.4.1/distribution/tar/target/releases
+tar -xvf elasticsearch-2.4.1-SNAPSHOT.tar.gz
+cd elasticsearch-2.4.1-SNAPSHOT
+bin/plugin install mobz/elasticsearch-head
+mkdir -p data
+
+echo &quot;network.host: 0.0.0.0&quot; &gt;&gt; elasticsearch.yml
+echo &quot;http.port: 9200&quot; &gt;&gt; config/elasticsearch.yml
+
+sudo chmod 777 bin/elasticsearch
+nohup bin/elasticsearch &amp;
+
+sleep 30s
+
+ps -ef | grep elastic
+
+curl -X GET http://127.0.0.1:9200/
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+    if(it.name==x){
+it.getComputer().doDoDelete()
+    }
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <hudson.plugins.emailext.ExtendedEmailPublisher plugin="email-ext@2.53">
+      <recipientList>$DEFAULT_RECIPIENTS</recipientList>
+      <configuredTriggers>
+        <hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+          <email>
+            <subject>$PROJECT_DEFAULT_SUBJECT</subject>
+            <body>$PROJECT_DEFAULT_CONTENT</body>
+            <recipientProviders>
+              <hudson.plugins.emailext.plugins.recipients.ListRecipientProvider/>
+            </recipientProviders>
+            <attachmentsPattern></attachmentsPattern>
+            <attachBuildLog>false</attachBuildLog>
+            <compressBuildLog>false</compressBuildLog>
+            <replyTo>$PROJECT_DEFAULT_REPLYTO</replyTo>
+            <contentType>project</contentType>
+          </email>
+        </hudson.plugins.emailext.plugins.trigger.FailureTrigger>
+      </configuredTriggers>
+      <contentType>default</contentType>
+      <defaultSubject>$DEFAULT_SUBJECT</defaultSubject>
+      <defaultContent>$DEFAULT_CONTENT</defaultContent>
+      <attachmentsPattern></attachmentsPattern>
+      <presendScript>$DEFAULT_PRESEND_SCRIPT</presendScript>
+      <postsendScript></postsendScript>
+      <attachBuildLog>true</attachBuildLog>
+      <compressBuildLog>false</compressBuildLog>
+      <replyTo>$DEFAULT_REPLYTO</replyTo>
+      <saveOutput>false</saveOutput>
+      <disabled>false</disabled>
+    </hudson.plugins.emailext.ExtendedEmailPublisher>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <includeCustomMessage>false</includeCustomMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <includeCustomMessage>false</includeCustomMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+    <jenkins.plugins.slack.SlackNotifier reference="../jenkins.plugins.slack.SlackNotifier[2]"/>
+  </publishers>
+  <buildWrappers/>
+</project>

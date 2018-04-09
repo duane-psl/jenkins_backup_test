@@ -1,0 +1,154 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_sl12-SP2_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 14 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 14 * * 4</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;rabbitmq-server&quot;
+published_version=&quot;3.6.14&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+    sudo zypper update -y
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+    sudo apt-get update
+	available_version=$(sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else
+   echo &quot;Availabel version in repo is $available_version&quot;
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+#--------------------------------------------------------------------------------------------
+# Install Erlang (dependency for RabbitMQ) from source
+sudo zypper update -y
+sudo zypper install -y curl zip unzip libxslt xmlto patch subversion procps ant ant-junit java-1_7_1-ibm java-1_7_1-ibm-devel git-core \
+java-1.7.1-ibm java-1.7.1-ibm-devel wget tar make perl gcc gcc-c++ openssl openssl-devel ncurses-devel ncurses unixODBC unixODBC-devel
+export WORK_DIR=`pwd`
+
+# Download and untar erlang source
+wget http://www.erlang.org/download/otp_src_20.0.tar.gz
+tar zxf otp_src_20.0.tar.gz
+cd otp_src_20.0
+export ERL_TOP=$(pwd)
+
+cd $ERL_TOP
+./configure --prefix=/usr
+make
+sudo make install
+make release_tests
+cd release/tests/test_server
+$ERL_TOP/bin/erl -s ts install -s ts smoke_test batch -s init stop
+
+
+# Build rabbitmq
+cd ../
+# Dependencies for rabbitmq
+export JAVA_HOME=/usr/lib64/jvm/java
+export ANT_HOME=/usr/share/ant
+export PATH=$PATH:$ERL_TOP/bin:/usr/lib/erlang/lib/erl_interface-3.9/bin/:$JAVA_HOME/bin:$ANT_HOME
+
+#Build, Test and Install the RabbitMQ Server 3.6.14
+wget https://www.rabbitmq.com/releases/rabbitmq-server/v3.6.14/rabbitmq-server-3.6.14.tar.xz 
+tar xf rabbitmq-server-3.6.14.tar.xz
+cd rabbitmq-server-3.6.14
+make all
+sudo make tests
+sudo make install
+
+
+#build and install elixir
+cd ..
+git clone git://github.com/elixir-lang/elixir
+cd elixir
+git checkout v1.5.2
+make
+sudo make install
+
+sudo mkdir -p /etc/rabbitmq
+echo &quot;[{rabbit, [{loopback_users, []}]}].&quot; | sudo tee /etc/rabbitmq/rabbitmq.config
+
+#start rabbitmq management server
+cd ../rabbitmq-server-3.6.14
+sudo rm -rf deps/rabbit/plugins
+sudo ln -s $PWD/plugins deps/rabbit/plugins
+sudo deps/rabbit/scripts/rabbitmq-plugins enable rabbitmq_management
+sudo deps/rabbit/scripts/rabbitmq-server -detached
+sleep 4m
+curl http://localhost:15672</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build, @cgopi</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

@@ -1,0 +1,154 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description>Build Logstash for rhel6 </description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_2048</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 20 * * 0</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 20 * * 0</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;logstash&quot;
+published_version=&quot;6.2.2&quot;
+
+
+available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+PRETTY_NAME=&quot;Red Hat Enterprise Linux Server release 6.9 (Santiago)&quot;
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo for $PRETTY_NAME.&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+source /home/test/.bashrc
+export WORK_DIR=`pwd`
+#Install dependencies
+sudo yum install -y java-1.8.0-ibm.s390x java-1.8.0-ibm-devel.s390x wget unzip tar gcc make
+
+#Set Environment Variables
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-ibm.s390x/
+export PATH=$JAVA_HOME/bin:$PATH
+java -version 
+
+# Build ant
+cd $WORK_DIR
+wget http://archive.apache.org/dist/ant/binaries/apache-ant-1.9.10-bin.tar.gz
+tar -zxvf apache-ant-1.9.10-bin.tar.gz
+export ANT_HOME=`pwd`/apache-ant-1.9.10
+export PATH=$ANT_HOME/bin:$PATH 
+
+#Download source code of Logstash
+cd $WORK_DIR
+wget https://artifacts.elastic.co/downloads/logstash/logstash-6.2.2.zip
+unzip -u logstash-6.2.2.zip
+
+
+#Get jffi source code and build with ant
+cd $WORK_DIR
+wget https://github.com/jnr/jffi/archive/jffi-1.2.16.zip
+unzip -u jffi-1.2.16.zip
+cd jffi-jffi-1.2.16
+ant
+
+#Set LD_LIBRARAY_PATH
+export LD_LIBRARY_PATH=$WORK_DIR/jffi-jffi-1.2.16/build/jni/:$LD_LIBRARY_PATH
+
+#Run Logstash
+cd $WORK_DIR/logstash-6.2.2
+bin/logstash -V 
+bin/logstash -V | grep 6.2.2
+
+# The following part has been added under migration activity
+
+echo &quot;Hello world&quot; &gt; test.txt
+
+bin/logstash -e &apos;input { stdin { } } output { file { path =&gt; &quot;op.txt&quot; } }&apos; &lt; test.txt
+
+cat op.txt | grep  &quot;Hello world&quot; | grep &quot;version&quot; | grep &quot;host&quot; | grep &quot;timestamp&quot;
+
+comp_value=$?
+
+
+if [ $comp_value -eq 0 ]
+
+then
+
+    exit 0
+
+else
+
+    exit 1
+
+fi
+
+
+
+
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@aditya.pawaskar</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>false</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

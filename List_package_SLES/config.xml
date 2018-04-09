@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_sles12</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+set +o noclobber # Allow overwrite of files just in case it is set to off
+
+#path_to_shel_script=&quot;/scratch/ecos0008/PDS/scripts/&quot;
+#$cd $path_to_shel_script
+
+echo &quot;#### Getting a list of all packages using command zypper pa &gt; Packages.txt &quot;
+zypper pa &gt; Packages.txt # get information about all packages.
+
+echo &quot;#### Iterating over the packages in the installed list and generating data for each.&quot;
+echo &apos;[&apos; &gt; SLES_Package_List.json
+
+packageNumber=1
+while read line # Read a line i.e. read information about a single installed package
+do
+    if [[ $line != *&quot;|&quot;* ]]
+    then
+      continue
+    fi
+    if [[ $line == *&quot;Name&quot;* ]]
+    then
+      continue
+    fi
+
+    packageName=$(echo $line | awk -F&apos;|&apos; &apos;{print $3}&apos;)        # Grab the package name
+    packageName=$(echo $packageName | awk &apos;{$1=$1};1&apos;)
+    version=$(echo $line | awk -F&apos;|&apos; &apos;{print $4}&apos;)            # Grab the package version
+    version=$(echo $version | awk &apos;{$1=$1};1&apos;)            # Grab the package version
+
+    prefix=&quot;,&quot;
+    if [ $packageNumber -eq 1 ]
+    then
+        prefix=&quot;&quot;
+    fi
+    printf &apos;%s{&quot;packageName&quot;:&quot;%s&quot;,&quot;updateVersion&quot;:&quot;%s&quot;}\n&apos; &quot;$prefix&quot; &quot;$packageName&quot; &quot;$version&quot; &gt;&gt;  SLES_Package_List.json
+
+    packageNumber=$((packageNumber+1))
+
+done &lt; Packages.txt
+
+echo &apos;]&apos; &gt;&gt; SLES_Package_List.json
+echo &quot;#### Completed fetching data for installed packages.&quot;
+
+rm -f Packages.txt
+#mv -f SLES_Package_List.json ../data/.</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.ArtifactArchiver>
+      <artifacts>*.json</artifacts>
+      <allowEmptyArchive>false</allowEmptyArchive>
+      <onlyIfSuccessful>false</onlyIfSuccessful>
+      <fingerprint>false</fingerprint>
+      <defaultExcludes>true</defaultExcludes>
+    </hudson.tasks.ArtifactArchiver>
+  </publishers>
+  <buildWrappers/>
+</project>

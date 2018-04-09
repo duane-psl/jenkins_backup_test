@@ -1,0 +1,170 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_rh6.9_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 6 * * 3</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 6 * * 3</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Set the below parameters manually
+package_name=&quot;hbase&quot;
+published_version=&quot;1.2.6&quot;
+source /home/test/.bashrc
+
+available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+PRETTY_NAME=&quot;Red Hat Enterprise Linux Server release 6.9 (Santiago)&quot;
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo for $PRETTY_NAME.&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+
+#Install dependencies
+sudo yum install -y java-1.8.0-ibm.s390x java-1.8.0-ibm-devel.s390x git wget tar make gcc ant ant-junit.s390x ant-nodeps.s390x
+
+java -version
+
+#Set Environment Variables
+export HADOOP_USER_NAME=&quot;hadoop&quot;
+export ANT_HOME=/usr/share/ant/
+
+# Set Workdir
+export WORK_DIR=`pwd`
+export hbase_dir=`pwd`
+cd $WORK_DIR
+export JAVA_HOME=/usr/lib/jvm/java
+export PATH=$JAVA_HOME/bin:$PATH
+ulimit -s 9999999
+
+#Install MAven
+wget https://archive.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz
+tar zxf apache-maven-3.3.9-bin.tar.gz
+export PATH=$PATH:$WORK_DIR/apache-maven-3.3.9/bin
+
+#Download the source code
+git clone git://github.com/apache/hbase.git
+cd hbase/
+git checkout rel/1.2.6
+mvn package -DskipTests
+mvn test -fn
+
+#Start Hbase shell
+sudo rm -rf jffi-1.0.0
+cd $hbase_dir
+wget https://github.com/jnr/jffi/archive/1.0.0.tar.gz
+tar -xvf 1.0.0.tar.gz
+cd jffi-1.0.0/
+
+
+#Edit the files
+cp $hbase_dir/jffi-1.0.0/jni/GNUmakefile $hbase_dir/jffi-1.0.0/jni/GNUmakefile.org
+sed -i &apos;68d &apos; $hbase_dir/jffi-1.0.0/jni/GNUmakefile
+sed -i &apos;68 i WFLAGS += -W -Wall -Wno-unused -Wno-parentheses -Wundef -Wno-unused-parameter&apos; $hbase_dir/jffi-1.0.0/jni/GNUmakefile 
+
+sed -i &apos;159d &apos; $hbase_dir/jffi-1.0.0/jni/GNUmakefile
+sed -i &apos;159 i SOFLAGS = -shared -static-libgcc -Wl,-soname,$(@F) -Wl,-O1 &apos; $hbase_dir/jffi-1.0.0/jni/GNUmakefile
+
+cp $hbase_dir/jffi-1.0.0/libtest/GNUmakefile $hbase_dir/jffi-1.0.0/libtest/GNUmakefile.org
+
+sed -i &apos;48d &apos; $hbase_dir/jffi-1.0.0/libtest/GNUmakefile
+sed -i &apos;48 i WFLAGS = -W -Werror -Wall -Wno-unused -Wno-parentheses -Wno-unused-parameter&apos; $hbase_dir/jffi-1.0.0/libtest/GNUmakefile
+
+sed -i &apos;50d &apos; $hbase_dir/jffi-1.0.0/libtest/GNUmakefile
+sed -i &apos;50 i SOFLAGS = -shared -Wl,-O1&apos; $hbase_dir/jffi-1.0.0/libtest/GNUmakefile
+ 
+cp $hbase_dir/jffi-1.0.0/custom-build.xml $hbase_dir/jffi-1.0.0/custom-build.xml.org
+#cp /home/test/Hbase $hbase_dir/jffi-1.0.0/custom-build.xml
+
+sed -i &apos;68d &apos; $hbase_dir/jffi-1.0.0/custom-build.xml
+sed -i &apos;68 i &lt;javac target=&quot;1.8&quot; destdir=&quot;${build.classes.dir}&quot; srcdir=&quot;${build.dir}/java&quot;/&gt; &apos; $hbase_dir/jffi-1.0.0/custom-build.xml
+
+ant 2&gt;&amp;1 | tee logs
+
+sudo rm -rf $hbase_dir/jar_tmp
+mkdir $hbase_dir/jar_tmp
+cp ~/.m2/repository/org/jruby/jruby-complete/1.6.8/jruby-complete-1.6.8.jar $hbase_dir/jar_tmp
+cd $hbase_dir/jar_tmp
+jar xf jruby-complete-1.6.8.jar
+mkdir jni/s390x-Linux
+cp $hbase_dir/jffi-1.0.0/build/jni/libjffi-1.0.so jni/s390x-Linux
+jar uf jruby-complete-1.6.8.jar jni/s390x-Linux/libjffi-1.0.so
+mv jruby-complete-1.6.8.jar ~/.m2/repository/org/jruby/jruby-complete/1.6.8/jruby-complete-1.6.8.jar
+
+#Start hbase shell
+cd $hbase_dir/hbase
+bin/start-hbase.sh
+bin/hbase shell
+
+sleep 60s
+ps -aef 
+
+bin/stop-hbase.sh
+sleep 60s
+ps -aef </command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@graut</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

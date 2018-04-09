@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dockercloud_ubuntu16.04</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 2</spec>
+    </hudson.triggers.TimerTrigger>
+    <hudson.triggers.SCMTrigger>
+      <spec>H 13 * * 2</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#Install build dependencies
+
+sudo apt-get update -y
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get install -y mysql-server
+sudo apt-get install -y git curl apache2 php php-mysql libapache2-mod-php
+
+#Make changes in the configuration file 
+sudo chmod 777 /etc/apache2/apache2.conf
+
+sudo echo -e &quot;AddType application/x-httpd-php .php&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;ServerName localhost&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;&lt;Directory /&gt;&quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot; DirectoryIndex index.php &quot; &gt;&gt; /etc/apache2/apache2.conf
+sudo echo -e &quot;&lt;/Directory&gt;&quot; &gt;&gt; /etc/apache2/apache2.conf
+
+line=&quot;\/var\/www\/html&quot;
+line_new=&quot;\/var\/www\/html\/WordPress&quot;
+sudo sed -i &quot;s/$line/$line_new/g&quot; /etc/apache2/sites-available/000-default.conf
+
+#Download WordPress source code and configure
+cd /var/www/html
+sudo git clone git://github.com/WordPress/WordPress.git
+cd WordPress
+sudo git checkout 4.9.4
+
+sudo mv wp-config-sample.php wp-config.php
+
+sudo sed -i &apos;s/localhost/127.0.0.1/&apos; wp-config.php
+sudo sed -i &apos;s/database_name_here/WORDPRESS/&apos; wp-config.php
+sudo sed -i &apos;s/username_here/Wordpress/&apos; wp-config.php
+sudo sed -i &apos;s/password_here/password/&apos; wp-config.php 	
+
+
+#Initialize MySQL server
+
+sudo /usr/sbin/mysqld --initialize --user=mysql --datadir=/var/lib/mysql/data 
+sleep 60s
+
+sudo mkdir -p /var/run/mysqld
+sudo chown mysql:mysql /var/run/mysqld
+#sudo chmod 777 -R /var/run/mysqld
+
+#Create database and grant privileges to &apos;Wordpress&apos; user
+sudo /usr/bin/mysqld_safe --user=mysql &amp;
+sleep 90s
+sudo /usr/bin/mysql -e &quot;create database WORDPRESS&quot; 
+sudo /usr/bin/mysql -e &quot;create user &apos;Wordpress&apos;@&apos;localhost&apos; identified by &apos;password&apos;&quot; 
+sudo /usr/bin/mysql -e &quot;grant all privileges on WORDPRESS.* to &apos;Wordpress&apos;@&apos;localhost&apos; identified by &apos;password&apos; with GRANT OPTION&quot;
+
+#Start httpd server
+sudo service apache2 start
+sleep 30s
+curl http://127.0.0.1:80</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}
+</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@duaned</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>

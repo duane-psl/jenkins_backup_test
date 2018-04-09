@@ -1,0 +1,159 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project>
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.heavy__job.HeavyJobProperty plugin="heavy-job@1.1">
+      <weight>1</weight>
+    </hudson.plugins.heavy__job.HeavyJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>dc2_ub16.10_4096</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>true</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 13 * * 4</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>sudo apt-get update
+
+#Set the below parameters manually
+package_name=&quot;elasticsearch&quot;
+published_version=&quot;5.4.0&quot;
+
+#Check distro and available version in repo : rhel7.x, Sles11.x/12.x, Ub16.x/17.x 
+. /etc/os-release
+if [ $ID == &quot;rhel&quot; ]; then
+	available_version=$(sudo yum info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;sles&quot; ]; then
+	available_version=$(sudo zypper info $package_name | grep Version | head -1 | cut -d &apos;:&apos; -f 2| cut -d &apos; &apos; -f 2)
+elif [ $ID == &quot;ubuntu&quot; ]; then
+	available_version=$(sudo apt-get update &amp;&amp; sudo apt-cache policy $package_name | grep Candidate | head -1 | cut -d &apos; &apos; -f 4)
+fi
+
+
+if [[ $available_version == *&quot;$published_version&quot;* ]]; then
+	echo &quot;Version $published_version is already available in repo&quot;
+    echo &quot;Exact name: $available_version ... Failing&quot;
+    exit 1
+else	
+   echo &quot;Published version is not available in repo. Going ahead.&quot;     
+fi
+
+sudo apt-get install -y tar wget unzip curl maven openjdk-8-jdk openjdk-8-jre git make automake autoconf libtool  patch libx11-dev libxt-dev pkg-config texinfo locales-all ant
+
+export WORK_DIR=`pwd`
+
+wget https://services.gradle.org/distributions/gradle-3.3-bin.zip
+unzip gradle-3.3-bin.zip
+export PATH=$PATH:$WORK_DIR/gradle-3.3/bin
+
+unset JAVA_TOOL_OPTIONS
+export LANG=&quot;en_US.UTF-8&quot;
+export JAVA_TOOL_OPTIONS=&quot;-Dfile.encoding=UTF8&quot;
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-s390x
+export _JAVA_OPTIONS=&quot;-Xmx10g&quot;
+
+cd $WORK_DIR
+git clone https://github.com/elastic/elasticsearch
+cd elasticsearch
+git checkout v5.4.0
+
+gradle assemble
+
+cd ..
+
+git clone https://github.com/java-native-access/jna.git
+cd jna
+git checkout 4.4.0
+ant
+
+cd $HOME/.gradle/caches/modules-2/files-2.1/org.elasticsearch/jna/4.4.0/6edc9b4514969d768039acf43f04210b15658cd7
+mv jna-4.4.0.jar jna-4.4.0.jar.old
+cp $WORK_DIR/jna/build/jna.jar jna-4.4.0.jar
+cd -
+
+cd ../elasticsearch
+cd distribution/tar/build/distributions/
+
+tar -xf elasticsearch-5.4.0-SNAPSHOT.tar.gz
+
+nohup elasticsearch-5.4.0-SNAPSHOT/bin/elasticsearch &amp;
+sleep 30s
+ps -ef | grep elastic
+sleep 50s
+ps -ef | grep elastic
+curl -X GET http://127.0.0.1:9200/
+cd -
+
+gradle test --continue -Dtests.haltonfailure=false -Dtests.es.node.mode=network &gt; /home/test/networktests.log 2&gt;&amp;1 || true;
+gradle test --continue -Dtests.haltonfailure=false -Dtests.es.node.mode=local &gt; /home/test/localtests.log 2&gt;&amp;1 || true;
+
+echo &quot;Network Tests&quot;
+sed -n &apos;/FAILURE:/,$p&apos; /home/test/networktests.log   &gt; /home/test/networktests2.log
+grep -r &quot;Execution failed for task&quot; /home/test/networktests2.log &gt; /home/test/networktests3.log
+cat /home/test/networktests3.log
+
+echo &quot;Local Tests&quot;
+sed -n &apos;/FAILURE:/,$p&apos; /home/test/localtests.log   &gt; /home/test/localtests2.log
+grep -r &quot;Execution failed for task&quot; /home/test/localtests2.log &gt; /home/test/localtests3.log
+cat /home/test/localtests3.log
+
+ps -aux | grep elasticsearch | awk &apos;{ print $2;}&apos;
+for KILLPID in `ps -aux | grep elasticsearch | awk &apos;{ print $2;}&apos;`;
+do
+if [ `ps -aux | grep elasticsearch | wc -l` = 1 ]; then
+break
+fi
+sudo kill -9 $KILLPID;
+done;</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder plugin="groovy-postbuild@2.3.1">
+      <script plugin="script-security@1.24">
+        <script>import jenkins.model.Jenkins
+
+def x=manager.envVars[&apos;NODE_NAME&apos;]
+Jenkins.instance.slaves.each {
+if(it.name==x){
+it.getComputer().doDoDelete()
+}
+}</script>
+        <sandbox>false</sandbox>
+      </script>
+      <behavior>0</behavior>
+      <runForMatrixParent>false</runForMatrixParent>
+    </org.jvnet.hudson.plugins.groovypostbuild.GroovyPostbuildRecorder>
+    <jenkins.plugins.slack.SlackNotifier plugin="slack@2.2">
+      <baseUrl></baseUrl>
+      <teamDomain></teamDomain>
+      <authToken></authToken>
+      <authTokenCredentialId></authTokenCredentialId>
+      <botUser>false</botUser>
+      <room>#loz-jenkins-build,@nbhave</room>
+      <startNotification>false</startNotification>
+      <notifySuccess>false</notifySuccess>
+      <notifyAborted>false</notifyAborted>
+      <notifyNotBuilt>false</notifyNotBuilt>
+      <notifyUnstable>false</notifyUnstable>
+      <notifyRegression>false</notifyRegression>
+      <notifyFailure>true</notifyFailure>
+      <notifyBackToNormal>true</notifyBackToNormal>
+      <notifyRepeatedFailure>true</notifyRepeatedFailure>
+      <includeTestSummary>false</includeTestSummary>
+      <includeFailedTests>false</includeFailedTests>
+      <commitInfoChoice>NONE</commitInfoChoice>
+      <includeCustomMessage>false</includeCustomMessage>
+      <customMessage></customMessage>
+    </jenkins.plugins.slack.SlackNotifier>
+  </publishers>
+  <buildWrappers/>
+</project>
